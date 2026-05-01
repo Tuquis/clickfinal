@@ -7,10 +7,13 @@ Modules.Relatorios = {
     _viewingId: null,
 
     async render() {
+        if (Auth.can('aluno')) {
+            renderContent(`<div class="empty-state"><div class="empty-icon">🔒</div><p>Esta área é restrita.</p></div>`);
+            return;
+        }
         var isProf  = Auth.can('professor');
         var isAdmin = Auth.can('admin');
         var isPsico = Auth.can('psicopedagoga');
-        var isAluno = Auth.can('aluno');
 
         renderContent(`
             <div class="page-header">
@@ -527,22 +530,97 @@ Modules.Relatorios = {
 
     async exportPDF() {
         var id = this._viewingId;
-        var el = document.getElementById('rel-pdf-' + id);
-        if (!el) return showToast('Abra o relatório primeiro', 'error');
+        if (!id) return showToast('Abra o relatório primeiro', 'error');
+
         try {
             showToast('Gerando PDF...', 'info', 2000);
-            var canvas = await html2canvas(el, { scale: 2, useCORS: true });
-            var imgData = canvas.toDataURL('image/png');
-            var pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-            var w = pdf.internal.pageSize.getWidth();
-            var h = (canvas.height * w) / canvas.width;
-            var y = 0, ph = pdf.internal.pageSize.getHeight();
-            while (y < h) {
-                if (y > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, -y, w, h);
-                y += ph;
-            }
-            pdf.save('relatorio-' + id.substring(0,8) + '.pdf');
+
+            var res = await supabase
+                .from('relatorios')
+                .select(`*, aluno:usuarios!relatorios_aluno_id_fkey(nome), professor:usuarios!relatorios_professor_id_fkey(nome)`)
+                .eq('id', id)
+                .single();
+
+            var r = res.data;
+            if (!r) return showToast('Relatório não encontrado', 'error');
+
+            var alunoNome    = (r.aluno && r.aluno.nome) || '—';
+            var profNome     = (r.professor && r.professor.nome) || '—';
+            var habAcad      = r.habilidades?.academicas?.join(', ')      || 'Nenhuma';
+            var habSocio     = r.habilidades?.socioemocionais?.join(', ') || 'Nenhuma';
+
+            var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+            // ── LOGO ─────────────────────────────────────────────────
+            // Coloque o arquivo da logo em: /home/arthur/Documentos/clickfinal/img/logo-click.png
+            // Para exibir, descomente as linhas abaixo e ajuste largura/altura (ex: 30x12 mm):
+            // var logoBase64 = /* importe via fetch ou embed em base64 */;
+            // doc.addImage(logoBase64, 'PNG', 10, 8, 30, 12);
+
+            // ── HEADER ────────────────────────────────────────────────
+            doc.setFillColor(111, 79, 227);
+            doc.rect(0, 0, 210, 35, 'F');
+
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold');
+            doc.text('CLICK DO SABER', 105, 15, { align: 'center' });
+
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Relatório Pedagógico Individual', 105, 23, { align: 'center' });
+
+            doc.setFontSize(9);
+            doc.text('Gerado em ' + new Date().toLocaleDateString('pt-BR'), 105, 30, { align: 'center' });
+
+            // ── CARD DO ALUNO ─────────────────────────────────────────
+            doc.setFillColor(245, 245, 245);
+            doc.roundedRect(10, 40, 190, 20, 3, 3, 'F');
+
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('Aluno:', 15, 50);
+            doc.setFont('helvetica', 'normal');
+            doc.text(alunoNome, 35, 50);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text('Professor:', 120, 50);
+            doc.setFont('helvetica', 'normal');
+            doc.text(profNome, 145, 50);
+
+            // ── TABELA ────────────────────────────────────────────────
+            doc.autoTable({
+                startY: 70,
+                theme: 'grid',
+                headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
+                styles: { fontSize: 10, cellPadding: 4 },
+                columns: [
+                    { header: 'Categoria', dataKey: 'item' },
+                    { header: 'Descrição',  dataKey: 'detalhe' }
+                ],
+                body: [
+                    { item: 'Data',                      detalhe: new Date(r.created_at).toLocaleDateString('pt-BR') },
+                    { item: 'Conteúdo Trabalhado',        detalhe: r.conteudo_ministrado || '—' },
+                    { item: 'Comportamento',              detalhe: r.comportamento       || '—' },
+                    { item: 'Compreensão',                detalhe: r.compreensao         || '—' },
+                    { item: 'Habilidades Acadêmicas',     detalhe: habAcad },
+                    { item: 'Habilidades Socioemocionais',detalhe: habSocio },
+                    { item: 'Recomendações',              detalhe: r.recomendacoes       || 'Nenhuma' }
+                ],
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
+            });
+
+            // ── RODAPÉ ────────────────────────────────────────────────
+            var pageHeight = doc.internal.pageSize.height;
+            doc.setDrawColor(200);
+            doc.line(10, pageHeight - 20, 200, pageHeight - 20);
+            doc.setFontSize(9);
+            doc.setTextColor(120);
+            doc.text('Click do Saber - Plataforma de Acompanhamento Pedagógico', 105, pageHeight - 12, { align: 'center' });
+
+            doc.save('relatorio-' + id.substring(0, 8) + '.pdf');
             showToast('PDF exportado', 'success');
         } catch(err) {
             showToast('Erro: ' + err.message, 'error');

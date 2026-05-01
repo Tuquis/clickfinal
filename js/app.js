@@ -37,6 +37,7 @@ const SIDEBAR_ITEMS = {
         { id: 'dashboard',       icon: '⊞', label: 'Dashboard' },
         { id: 'usuarios',        icon: '👤', label: 'Usuários' },
         { id: 'alunos',          icon: '🎓', label: 'Alunos' },
+        { id: 'professores',     icon: '🏫', label: 'Professores' },
         { id: 'agenda',          icon: '📅', label: 'Agenda' },
         { id: 'cronograma',      icon: '📋', label: 'Cronograma' },
         { id: 'disponibilidade', icon: '🕐', label: 'Disponibilidade' },
@@ -47,6 +48,7 @@ const SIDEBAR_ITEMS = {
     professor: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },
         { id: 'agenda',         icon: '📅', label: 'Minha Agenda' },
+        { id: 'professores',    icon: '🏫', label: 'Minhas Aulas' },
         { id: 'relatorios',     icon: '📄', label: 'Relatórios' },
         { id: 'atividades',     icon: '📝', label: 'Atividades' },
         { id: 'disponibilidade',icon: '🕐', label: 'Disponibilidade' },
@@ -57,7 +59,6 @@ const SIDEBAR_ITEMS = {
         { id: 'cronograma',     icon: '📋', label: 'Cronograma' },
         { id: 'atividades',     icon: '📝', label: 'Atividades' },
         { id: 'financeiro',     icon: '💰', label: 'Financeiro' },
-        { id: 'relatorios',     icon: '📄', label: 'Meus Relatórios' },
     ],
     psicopedagoga: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },
@@ -81,8 +82,8 @@ function renderSidebar() {
 
     sidebar.innerHTML = `
         <div class="sidebar-logo">
-            <div class="logo-mark">E</div>
-            <span class="logo-text">Ensinoclick</span>
+            <img src="img/isotipo.png" alt="Click do Saber" class="logo-img" />
+            <span class="logo-text">Click do Saber</span>
         </div>
         <nav class="sidebar-nav">
             ${items.map(item => `
@@ -122,6 +123,7 @@ function registerRoutes() {
     Router.register('atividades',      Modules.Atividades.render.bind(Modules.Atividades));
     Router.register('financeiro',      Modules.Financeiro.render.bind(Modules.Financeiro));
     Router.register('disponibilidade', Modules.Disponibilidade.render.bind(Modules.Disponibilidade));
+    Router.register('professores',     Modules.Professores.render.bind(Modules.Professores));
     Router.register('auditoria',       Modules.Auditoria.render.bind(Modules.Auditoria));
     Router.register('psicopedagogia',  Modules.Psicopedagogia.render.bind(Modules.Psicopedagogia));
 }

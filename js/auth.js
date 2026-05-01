@@ -97,8 +97,10 @@ const Auth = {
     },
 
     // Verificar se usuário tem permissão
-    can(roles) {
-        if (!Array.isArray(roles)) roles = [roles];
+    can(...roles) {
+        if (roles.length === 1 && Array.isArray(roles[0])) {
+            roles = roles[0];
+        }
         return roles.includes(AppState.role);
     },
 

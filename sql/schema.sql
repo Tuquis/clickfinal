@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS public.professores_info (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     usuario_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
     saldo_aulas_dadas INTEGER NOT NULL DEFAULT 0,
+    materia TEXT,
+    chave_pix TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

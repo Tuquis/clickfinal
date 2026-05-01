@@ -7,12 +7,11 @@ Modules.Disponibilidade = {
     _allData: [],    // Cache de dados para filtros do Admin
     _diasCurtos: ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
 
-    // Horários disponíveis: 06:00 até 22:00, de 30 em 30 min
+    // Horários disponíveis: 06:00 até 22:00, de hora em hora
     _slots: (function() {
         var s = [];
-        for (var h = 6; h < 22; h++) {
+        for (var h = 6; h <= 22; h++) {
             s.push((h < 10 ? '0' : '') + h + ':00');
-            s.push((h < 10 ? '0' : '') + h + ':30');
         }
         return s;
     }()),
@@ -20,7 +19,6 @@ Modules.Disponibilidade = {
     async render() {
         if (!Auth.can('professor', 'admin')) return;
 
-        const isProf  = Auth.can('professor');
         const isAdmin = Auth.can('admin');
 
         if (isAdmin) {
@@ -33,7 +31,9 @@ Modules.Disponibilidade = {
                 <div class="card mb-3">
                     <div class="card-toolbar" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
                         <input type="text" class="input" id="filter-nome" placeholder="🔍 Filtrar por nome..." oninput="Modules.Disponibilidade.filtrar()">
-                        <input type="text" class="input" id="filter-materia" placeholder="📚 Filtrar por matéria..." oninput="Modules.Disponibilidade.filtrar()">
+                        <select class="input" id="filter-materia" onchange="Modules.Disponibilidade.filtrar()">
+                            <option value="">📚 Todas as matérias</option>
+                        </select>
                         <select class="input" id="filter-dia" onchange="Modules.Disponibilidade.filtrar()">
                             <option value="">📅 Todos os dias</option>
                             ${this._diasCurtos.map((d, i) => `<option value="${i}">${d}</option>`).join('')}
@@ -78,20 +78,27 @@ Modules.Disponibilidade = {
 
     async _loadAdminGeneral() {
         try {
-            // Busca disponibilidades cruzando com a tabela de usuários (nome) e alunos_info (disciplina/matéria)
-            const { data, error } = await supabase
-                .from('disponibilidade')
-                .select(`
-                    dia_semana, 
-                    horario_inicio, 
-                    professor_id,
-                    usuarios!inner(nome),
-                    alunos_info:professor_id(disciplina)
-                `);
+            const [dispRes, profRes] = await Promise.all([
+                supabase.from('disponibilidade').select(`
+                    dia_semana, horario_inicio, professor_id,
+                    usuarios!inner(nome)
+                `),
+                supabase.from('professores_info').select('materia').not('materia', 'is', null)
+            ]);
 
-            if (error) throw error;
-            
-            this._allData = data || [];
+            if (dispRes.error) throw dispRes.error;
+
+            this._allData = dispRes.data || [];
+
+            // Preenche o select de matérias com valores únicos do banco
+            const sel = document.getElementById('filter-materia');
+            if (sel && profRes.data) {
+                const unicas = [...new Set(profRes.data.map(p => p.materia).filter(Boolean))].sort();
+                unicas.forEach(m => {
+                    sel.innerHTML += `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`;
+                });
+            }
+
             this.filtrar(); // Renderiza a lista inicial
         } catch (err) {
             console.error(err);
@@ -105,8 +112,9 @@ Modules.Disponibilidade = {
         const diaQuery = document.getElementById('filter-dia').value;
 
         const filtrados = this._allData.filter(item => {
+            const materiaProf = (item.usuarios?.professores_info?.[0]?.materia || '').toLowerCase();
             const matchesNome = item.usuarios.nome.toLowerCase().includes(nomeQuery);
-            const matchesMateria = (item.alunos_info?.disciplina || '').toLowerCase().includes(materiaQuery);
+            const matchesMateria = materiaQuery === '' || materiaProf === materiaQuery;
             const matchesDia = diaQuery === "" || item.dia_semana == diaQuery;
             return matchesNome && matchesMateria && matchesDia;
         });
@@ -121,27 +129,50 @@ Modules.Disponibilidade = {
             return;
         }
 
-        // Estilo de lista de cards para o Admin
-        let html = '<div style="display: flex; flex-direction: column; gap: 10px; padding: 10px 0;">';
-        
-        // Ordenar por dia da semana e depois horário para ficar organizado
-        dados.sort((a, b) => a.dia_semana - b.dia_semana || a.horario_inicio.localeCompare(b.horario_inicio));
-
+        // Agrupar por professor
+        const porProf = {};
         dados.forEach(item => {
-            html += `
-                <div class="card p-3" style="border-left: 4px solid var(--color-primary); display: flex; justify-content: space-between; align-items: center; flex-direction: row;">
-                    <div>
-                        <div style="font-weight: 600; color: var(--color-text-1);">${escapeHtml(item.usuarios.nome)}</div>
-                        <div style="font-size: 0.85rem; color: var(--color-text-3);">
-                            ${this._diasCurtos[item.dia_semana]} às ${item.horario_inicio.substring(0,5)}
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <span class="badge badge-info">${escapeHtml(item.alunos_info?.disciplina || '—')}</span>
-                    </div>
-                </div>`;
+            const pid = item.professor_id;
+            if (!porProf[pid]) {
+                porProf[pid] = {
+                    nome: item.usuarios.nome,
+                    materia: item.usuarios?.professores_info?.[0]?.materia || '—',
+                    dias: {}
+                };
+            }
+            const d = item.dia_semana;
+            if (!porProf[pid].dias[d]) porProf[pid].dias[d] = [];
+            porProf[pid].dias[d].push(item.horario_inicio.substring(0, 5));
         });
-        
+
+        const diasLabel = this._diasCurtos;
+        let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:10px 0;">';
+
+        Object.values(porProf)
+            .sort((a, b) => a.nome.localeCompare(b.nome))
+            .forEach(prof => {
+                let diasHtml = '';
+                for (let d = 0; d < 7; d++) {
+                    const horarios = prof.dias[d];
+                    if (!horarios || horarios.length === 0) continue;
+                    horarios.sort();
+                    diasHtml += `
+                        <div style="margin-bottom:6px;">
+                            <span style="font-weight:600;color:var(--color-text-2);min-width:32px;display:inline-block">${diasLabel[d]}</span>
+                            <span style="font-size:.82rem;color:var(--color-text-3);">${horarios.map(h => h + 'h').join(' · ')}</span>
+                        </div>`;
+                }
+
+                html += `
+                    <div class="card p-3" style="border-top:3px solid var(--color-primary);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <div style="font-weight:700;color:var(--color-text-1);font-size:.95rem;">${escapeHtml(prof.nome)}</div>
+                            <span class="badge badge-info" style="font-size:.75rem;">${escapeHtml(prof.materia)}</span>
+                        </div>
+                        <div style="font-size:.85rem;">${diasHtml || '<span class="text-muted">Sem horários</span>'}</div>
+                    </div>`;
+            });
+
         html += '</div>';
         wrap.innerHTML = html;
     },
@@ -216,9 +247,8 @@ Modules.Disponibilidade = {
                     var parts = k.split('-');
                     var dia = parseInt(parts[0]);
                     var inicio = parts[1];
-                    var [hh, mm] = inicio.split(':').map(Number);
-                    mm += 30; if (mm >= 60) { hh++; mm = 0; }
-                    var fim = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+                    var hh = parseInt(inicio.split(':')[0]) + 1;
+                    var fim = (hh < 10 ? '0' : '') + hh + ':00';
                     return { professor_id: uid, dia_semana: dia, horario_inicio: inicio, horario_fim: fim };
                 });
                 await supabase.from('disponibilidade').insert(rows);

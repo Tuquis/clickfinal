@@ -6,22 +6,22 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    /* Palette — Quiet Luxury */
-    --color-bg:          #f8f7f5;
+    /* Palette — Purple & White */
+    --color-bg:          #fafafa;
     --color-surface:     #ffffff;
-    --color-surface-2:   #f3f2f0;
-    --color-border:      #e8e5e0;
-    --color-border-soft: #f0ede8;
+    --color-surface-2:   #f5f3ff;
+    --color-border:      #ede9fe;
+    --color-border-soft: #f5f3ff;
 
     --color-text:        #1a1a1a;
-    --color-text-2:      #4a4843;
-    --color-text-3:      #8a8681;
+    --color-text-2:      #3d3750;
+    --color-text-3:      #8b80a8;
     --color-text-inv:    #ffffff;
 
-    --color-primary:     #2c2c2c;
-    --color-primary-h:   #1a1a1a;
-    --color-accent:      #6b6045;
-    --color-accent-h:    #504838;
+    --color-primary:     #7c3aed;
+    --color-primary-h:   #6d28d9;
+    --color-accent:      #a78bfa;
+    --color-accent-h:    #8b5cf6;
 
     --color-blue:        #2563eb;
     --color-green:       #16a34a;
@@ -116,6 +116,18 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 14px;
+    flex-shrink: 0;
+}
+
+.logo-img {
+    width: 36px; height: 36px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.login-logo-img {
+    width: 48px; height: 48px;
+    object-fit: contain;
     flex-shrink: 0;
 }
 
@@ -296,7 +308,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 
 .card-highlight {
     border-color: var(--color-primary);
-    background: linear-gradient(135deg, #f8f7f5 0%, #f0ede8 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%);
 }
 
 .mb-3 { margin-bottom: 16px; }
@@ -469,7 +481,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 
 .input:focus {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(44,44,44,.08);
+    box-shadow: 0 0 0 3px rgba(124,58,237,.12);
 }
 
 .input::placeholder { color: var(--color-text-3); }
@@ -1193,7 +1205,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     transition: border-color var(--transition), background var(--transition);
 }
 
-.radio-item:hover { border-color: var(--color-primary); background: #f8f7f5; }
+.radio-item:hover { border-color: var(--color-primary); background: #f5f3ff; }
 
 .radio-item input[type="radio"] {
     margin-top: 2px;
@@ -1298,4 +1310,126 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     .stats-grid-3 { grid-template-columns: 1fr; }
     .disponibilidade-grid { grid-template-columns: repeat(2, 1fr); }
     .modal-box { margin: 10px; max-height: calc(100vh - 20px); }
+}
+
+/* ============================================================
+   CALENDÁRIO DE PROFESSORES (.pcal)
+   ============================================================ */
+.pcal {
+    user-select: none;
+}
+
+.pcal-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.pcal-titulo {
+    font-weight: 600;
+    font-size: .9375rem;
+    color: var(--color-text);
+}
+
+.pcal-nav-btn {
+    font-size: 1.25rem;
+    line-height: 1;
+    padding: 2px 10px !important;
+    color: var(--color-primary) !important;
+}
+
+.pcal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+
+.pcal-dow {
+    text-align: center;
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--color-text-3);
+    padding: 4px 0 6px;
+}
+
+.pcal-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border-soft);
+    transition: background 100ms;
+    min-height: 36px;
+}
+
+.pcal-cell.pcal-empty {
+    background: transparent;
+    border-color: transparent;
+}
+
+.pcal-cell.pcal-hoje {
+    border: 2px solid var(--color-primary);
+}
+
+.pcal-cell.pcal-tem-aula {
+    background: var(--color-primary);
+}
+
+.pcal-num {
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--color-text-2);
+    line-height: 1;
+}
+
+.pcal-cell.pcal-hoje .pcal-num {
+    color: var(--color-primary);
+    font-weight: 700;
+}
+
+.pcal-cell.pcal-tem-aula .pcal-num {
+    color: #fff;
+    font-weight: 700;
+}
+
+.pcal-badge {
+    font-size: .6rem;
+    font-weight: 700;
+    background: rgba(255,255,255,.3);
+    color: #fff;
+    border-radius: 10px;
+    padding: 0 4px;
+    line-height: 1.4;
+    margin-top: 1px;
+}
+
+.pcal-legenda {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-size: .75rem;
+    color: var(--color-text-3);
+}
+
+.pcal-leg-aula {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--color-primary);
+}
+
+/* Responsivo: empilha a lista e o calendário em telas pequenas */
+@media (max-width: 900px) {
+    #prof-admin-grid {
+        grid-template-columns: 1fr !important;
+    }
 }

@@ -39,7 +39,7 @@ Modules.Cronograma = {
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Aluno *</label>
-                                <select class="input" id="cron-aluno">
+                                <select class="input" id="cron-aluno" onchange="Modules.Cronograma._onAlunoChange(this)">
                                     <option value="">Selecionar...</option>
                                 </select>
                             </div>
@@ -52,17 +52,22 @@ Modules.Cronograma = {
                             <label class="form-label">Título *</label>
                             <input type="text" class="input" id="cron-titulo" placeholder="Ex: Revisão para prova de matemática" />
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Descrição</label>
-                            <textarea class="input textarea" id="cron-descricao" rows="2" placeholder="Observações gerais do cronograma"></textarea>
-                        </div>
                         <hr class="divider" />
                         <div class="form-group">
+                            <label class="form-label">Modelos rápidos</label>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+                                ${[
+                                    ['Semana padrão', ['Leitura e interpretação de texto','Exercícios de fixação','Revisão do conteúdo da semana','Tarefa para casa']],
+                                    ['Revisão para prova', ['Revisar anotações do caderno','Refazer exercícios errados','Fazer simulado','Tirar dúvidas com o professor']],
+                                    ['Reforço', ['Exercícios de reforço — parte 1','Exercícios de reforço — parte 2','Correção comentada','Resumo do conteúdo']],
+                                ].map(([label]) => `<button class="btn btn-secondary btn-sm" type="button"
+                                    onclick="Modules.Cronograma._aplicarModelo('${label}')">${label}</button>`).join('')}
+                            </div>
                             <label class="form-label">Tarefas</label>
                             <div class="tarefa-input-row">
                                 <input type="text" class="input" id="tarefa-nova" placeholder="Descreva a tarefa e pressione Enter"
                                     onkeydown="if(event.key==='Enter'){event.preventDefault();Modules.Cronograma._addTarefa();}" />
-                                <button class="btn btn-ghost btn-sm" onclick="Modules.Cronograma._addTarefa()">Adicionar</button>
+                                <button class="btn btn-ghost btn-sm" onclick="Modules.Cronograma._addTarefa()">+ Add</button>
                             </div>
                             <div id="tarefas-lista" class="tarefas-preview mt-2"></div>
                         </div>
@@ -244,10 +249,37 @@ Modules.Cronograma = {
         }).join('');
     },
 
+    _modelos: {
+        'Semana padrão':      ['Leitura e interpretação de texto','Exercícios de fixação','Revisão do conteúdo da semana','Tarefa para casa'],
+        'Revisão para prova': ['Revisar anotações do caderno','Refazer exercícios errados','Fazer simulado','Tirar dúvidas com o professor'],
+        'Reforço':            ['Exercícios de reforço — parte 1','Exercícios de reforço — parte 2','Correção comentada','Resumo do conteúdo'],
+    },
+
+    _aplicarModelo(nome) {
+        const tarefas = Modules.Cronograma._modelos[nome];
+        if (!tarefas) return;
+        Modules.Cronograma._tarefas = [...tarefas];
+        Modules.Cronograma._renderTarefasPreview();
+    },
+
+    _onAlunoChange(sel) {
+        const nome = sel.options[sel.selectedIndex]?.text || '';
+        const titulo = document.getElementById('cron-titulo');
+        if (nome && nome !== 'Selecionar...') {
+            titulo.value = 'Cronograma semanal — ' + nome;
+        }
+    },
+
     openCreate() {
-        document.getElementById('cron-semana').value = '';
+        // Semana atual (segunda-feira)
+        const today = new Date();
+        const day = today.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() + diff);
+        document.getElementById('cron-semana').value = monday.toISOString().substring(0, 10);
+
         document.getElementById('cron-titulo').value = '';
-        document.getElementById('cron-descricao').value = '';
         document.getElementById('cron-aluno').value = '';
         this._tarefas = [];
         this._renderTarefasPreview();
@@ -258,7 +290,6 @@ Modules.Cronograma = {
         const alunoId = document.getElementById('cron-aluno').value;
         const semana = document.getElementById('cron-semana').value;
         const titulo = document.getElementById('cron-titulo').value.trim();
-        const descricao = document.getElementById('cron-descricao').value.trim();
 
         const errors = validateForm([
             { value: alunoId, label: 'Aluno', rules: ['required'] },
@@ -278,7 +309,7 @@ Modules.Cronograma = {
                     admin_id: AppState.userProfile.id,
                     semana_inicio: semana,
                     titulo,
-                    descricao: descricao || null
+                    descricao: null
                 })
                 .select()
                 .single();
