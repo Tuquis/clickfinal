@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ensinoclick</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+    <!-- PAGE LOADER -->
+    <div id="page-loader">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- APP LAYOUT -->
+    <div class="app-layout">
+
+        <!-- SIDEBAR -->
+        <aside id="sidebar">
+            <!-- Renderizado por app.js / renderSidebar() -->
+        </aside>
+
+        <!-- MAIN WRAPPER -->
+        <div class="main-wrapper">
+
+            <!-- TOPBAR -->
+            <header class="topbar">
+                <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Abrir menu">
+                    ☰
+                </button>
+                <div class="topbar-spacer"></div>
+                <span id="topbar-datetime" style="font-size:0.8125rem;color:var(--color-text-3)"></span>
+            </header>
+
+            <!-- MAIN CONTENT (módulos renderizam aqui) -->
+            <main id="main-content" style="padding:28px">
+                <!-- conteúdo dinâmico -->
+            </main>
+
+        </div>
+    </div>
+
+    <!-- ============================================================
+         EXTERNAL LIBRARIES
+    ============================================================ -->
+
+    <!-- Supabase SDK (UMD bundle — necessário para window.supabase funcionar) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+    <!-- jsPDF + html2canvas para exportação PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- ============================================================
+         APP SCRIPTS (ordem importa)
+    ============================================================ -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+
+    <!-- Módulos -->
+    <script src="js/modules/dashboard.js"></script>
+    <script src="js/modules/usuarios.js"></script>
+    <script src="js/modules/alunos.js"></script>
+    <script src="js/modules/agenda.js"></script>
+    <script src="js/modules/relatorios.js"></script>
+    <script src="js/modules/cronograma.js"></script>
+    <script src="js/modules/atividades.js"></script>
+    <script src="js/modules/financeiro.js"></script>
+    <script src="js/modules/disponibilidade.js"></script>
+    <script src="js/modules/auditoria.js"></script>
+    <script src="js/modules/psicopedagogia.js"></script>
+
+    <!-- Roteador e inicializador principal -->
+    <script src="js/app.js"></script>
+
+    <!-- Clock no topbar -->
+    <script>
+        function updateClock() {
+            const el = document.getElementById('topbar-datetime');
+            if (el) {
+                el.textContent = new Date().toLocaleString('pt-BR', {
+                    weekday: 'short', day: 'numeric', month: 'short',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            }
+        }
+        updateClock();
+        setInterval(updateClock, 30000);
+    </script>
+
+</body>
+</html>
