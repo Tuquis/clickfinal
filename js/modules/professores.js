@@ -119,7 +119,7 @@ Modules.Professores = {
     async _loadAdmin() {
         const { data: profs, error } = await supabase
             .from('usuarios')
-            .select('id, nome, email, ativo, professores_info(materia)')
+            .select('id, nome, email, ativo, professores_info(materia, chave_pix)')
             .eq('role', 'professor')
             .order('nome');
 
@@ -156,10 +156,11 @@ Modules.Professores = {
 
         this._todosProfs = profs.map(p => ({
             ...p,
-            total:   cTotal[p.id] || 0,
-            mes:     cMes[p.id]   || 0,
-            ano:     cAno[p.id]   || 0,
-            materia: p.professores_info?.[0]?.materia || '—'
+            total:     cTotal[p.id] || 0,
+            mes:       cMes[p.id]   || 0,
+            ano:       cAno[p.id]   || 0,
+            materia:   p.professores_info?.[0]?.materia   || '—',
+            chave_pix: p.professores_info?.[0]?.chave_pix || '—'
         }));
 
         this._renderTabela(this._todosProfs, now);
@@ -192,6 +193,7 @@ Modules.Professores = {
                         <tr>
                             <th>Professor</th>
                             <th>Matéria</th>
+                            <th>Chave PIX</th>
                             <th>${mesLabel}</th>
                             <th>${anoLabel}</th>
                             <th>Total</th>
@@ -211,6 +213,12 @@ Modules.Professores = {
                                     </div>
                                 </td>
                                 <td>${escapeHtml(p.materia)}</td>
+                                <td>
+                                    ${p.chave_pix !== '—'
+                                        ? `<span class="pix-key">${escapeHtml(p.chave_pix)}</span>`
+                                        : `<span style="color:var(--color-text-3)">—</span>`
+                                    }
+                                </td>
                                 <td><span class="metric-mes">${p.mes}</span></td>
                                 <td><span class="metric-ano">${p.ano}</span></td>
                                 <td><span class="metric-total">${p.total}</span></td>
