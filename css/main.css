@@ -258,7 +258,8 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 
 .topbar-spacer { flex: 1; }
 
-#main-content {
+#main-content,
+.main-content {
     flex: 1;
     padding: 28px;
     max-width: 1400px;
@@ -1276,40 +1277,176 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     top: 1px;
 }
 
-/* RESPONSIVE */
+/* ============================================================
+   TOPBAR BRAND (logo mobile)
+   ============================================================ */
+.topbar-brand {
+    display: none;
+    align-items: center;
+    gap: 8px;
+}
+.topbar-brand-img  { width: 28px; height: 28px; object-fit: contain; }
+.topbar-brand-text { font-weight: 600; font-size: .875rem; color: var(--color-text); }
+.topbar-datetime   { font-size: .8125rem; color: var(--color-text-3); }
+
+/* ============================================================
+   TABLE RESPONSIVE WRAPPER
+   ============================================================ */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.table-responsive .table { min-width: 520px; }
+
+/* ============================================================
+   PROFESSOR — estilos da tabela
+   ============================================================ */
+.td-email      { font-size: .75rem; color: var(--color-text-3); }
+.metric-mes    { font-weight: 700; font-size: 1rem; color: var(--color-primary); }
+.metric-ano    { font-weight: 700; font-size: 1rem; color: var(--color-teal); }
+.metric-total  { font-weight: 700; font-size: 1rem; }
+.prof-row-sel  { background: var(--color-surface-2) !important; }
+
+.prof-admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 20px;
+    align-items: start;
+}
+.prof-cal-card { max-width: 400px; }
+
+/* ============================================================
+   PCAL — subtotais no nav
+   ============================================================ */
+.pcal-nav-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.pcal-subtotais {
+    font-size: .7rem;
+    color: var(--color-text-3);
+    font-weight: 500;
+}
+.pcal-nav-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: var(--color-primary);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition);
+}
+.pcal-nav-btn:hover { background: var(--color-surface-2); }
+
+/* ============================================================
+   RESPONSIVE — 1024px
+   ============================================================ */
 @media (max-width: 1024px) {
     .disponibilidade-grid { grid-template-columns: repeat(4, 1fr); }
-    .ficha-info-grid { grid-template-columns: repeat(2, 1fr); }
-    .dashboard-grid { grid-template-columns: 1fr; }
+    .ficha-info-grid       { grid-template-columns: repeat(2, 1fr); }
+    .dashboard-grid        { grid-template-columns: 1fr; }
+    .prof-admin-grid       { grid-template-columns: 1fr; }
+    .prof-cal-card         { max-width: 100%; }
 }
 
+/* ============================================================
+   RESPONSIVE — 768px (mobile)
+   ============================================================ */
 @media (max-width: 768px) {
+    /* Sidebar slide-in */
     #sidebar {
         transform: translateX(-100%);
         z-index: 150;
     }
     #sidebar.sidebar-open { transform: translateX(0); }
-    .main-wrapper { margin-left: 0; }
+
+    /* Layout */
+    .main-wrapper  { margin-left: 0; }
     .sidebar-toggle { display: flex; }
-    #main-content { padding: 16px; }
-    .page-header { margin-bottom: 16px; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .stats-grid-3 { grid-template-columns: repeat(2, 1fr); }
-    .stats-financeiro { grid-template-columns: 1fr; }
-    .form-row { grid-template-columns: 1fr; }
+    .topbar-brand   { display: flex; }
+    #main-content, .main-content { padding: 12px; }
+
+    /* Page headers */
+    .page-header {
+        margin-bottom: 14px;
+        gap: 10px;
+    }
+    .page-header .btn,
+    .page-header button { min-width: 0; }
+
+    /* Stats */
+    .stats-grid         { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid-3       { grid-template-columns: repeat(2, 1fr); }
+    .stats-financeiro   { grid-template-columns: 1fr 1fr; }
+    .stat-card          { padding: 14px; gap: 10px; }
+    .stat-value         { font-size: 1.25rem; }
+
+    /* Cards */
+    .card-toolbar { gap: 8px; padding: 10px 14px; }
+    .card-body    { padding: 14px; }
+    .card-header  { padding: 12px 14px; }
+
+    /* Forms */
+    .form-row         { grid-template-columns: 1fr; }
+    .ficha-info-grid  { grid-template-columns: 1fr; }
+
+    /* Tables — scroll horizontal */
+    .card        { overflow: visible; }   /* permite scroll interno */
+    .table-responsive,
+    .card-body   { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table       { font-size: .8rem; min-width: 480px; white-space: nowrap; }
+    .table th, .table td { padding: 8px 10px; white-space: nowrap; }
+
+    /* Grids */
     .disponibilidade-grid { grid-template-columns: repeat(3, 1fr); }
-    .ficha-info-grid { grid-template-columns: 1fr; }
-    .atividades-grid { grid-template-columns: 1fr; }
-    .dashboard-grid { grid-template-columns: 1fr; }
-    .table { font-size: 0.8rem; }
-    .table th, .table td { padding: 8px 10px; }
+    .atividades-grid      { grid-template-columns: 1fr; }
+    .dashboard-grid       { grid-template-columns: 1fr; }
+    .prof-admin-grid      { grid-template-columns: 1fr; }
+    .prof-cal-card        { max-width: 100%; }
+    #prof-admin-grid      { grid-template-columns: 1fr !important; }
+
+    /* Modais */
+    .modal-overlay  { padding: 10px; align-items: flex-end; }
+    .modal-box      { max-height: 92vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+    .modal-header   { padding: 14px 16px 12px; }
+    .modal-body     { padding: 14px 16px; }
+    .modal-footer   { padding: 12px 16px; }
+
+    /* Paginação */
+    .pagination { gap: 2px; padding: 12px; }
+    .page-btn   { padding: 5px 8px; font-size: .75rem; }
+
+    /* Disponibilidade cal */
+    #calendly-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Action buttons */
+    .action-btns { gap: 3px; }
+    .btn-sm      { padding: 4px 8px; }
+
+    /* Topbar */
+    .topbar-datetime { display: none; }
 }
 
+/* ============================================================
+   RESPONSIVE — 480px (pequeno)
+   ============================================================ */
 @media (max-width: 480px) {
-    .stats-grid { grid-template-columns: 1fr; }
-    .stats-grid-3 { grid-template-columns: 1fr; }
+    .stats-grid       { grid-template-columns: 1fr 1fr; }
+    .stats-grid-3     { grid-template-columns: 1fr 1fr; }
+    .stats-financeiro { grid-template-columns: 1fr; }
     .disponibilidade-grid { grid-template-columns: repeat(2, 1fr); }
-    .modal-box { margin: 10px; max-height: calc(100vh - 20px); }
+
+    .modal-overlay { padding: 0; }
+    .modal-box     { max-height: 96vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; width: 100%; max-width: 100%; }
+
+    /* Calendário professor fica compacto */
+    .pcal-grid { gap: 2px; }
+    .pcal-cell { min-height: 30px; }
+    .pcal-num  { font-size: .65rem; }
 }
 
 /* ============================================================
@@ -1330,13 +1467,6 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     font-weight: 600;
     font-size: .9375rem;
     color: var(--color-text);
-}
-
-.pcal-nav-btn {
-    font-size: 1.25rem;
-    line-height: 1;
-    padding: 2px 10px !important;
-    color: var(--color-primary) !important;
 }
 
 .pcal-grid {
