@@ -48,10 +48,10 @@ const SIDEBAR_ITEMS = {
     professor: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },
         { id: 'agenda',         icon: '📅', label: 'Minha Agenda' },
-        { id: 'professores',    icon: '🏫', label: 'Minhas Aulas' },
-        { id: 'relatorios',     icon: '📄', label: 'Relatórios' },
-        { id: 'atividades',     icon: '📝', label: 'Atividades' },
-        { id: 'disponibilidade',icon: '🕐', label: 'Disponibilidade' },
+        { id: 'professores',    icon: '🏫', label: 'Total de Aulas' },
+        { id: 'relatorios',     icon: '📄', label: 'Lançar Aula' },
+        { id: 'atividades',     icon: '📝', label: 'Enviar Atividade' },
+        { id: 'disponibilidade',icon: '🕐', label: 'Minha Disponibilidade' },
     ],
     aluno: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },

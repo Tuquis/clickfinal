@@ -376,7 +376,6 @@ Modules.Relatorios = {
         setLoading('#btn-salvar-relatorio', true);
         try {
             var ins = await supabase.from('relatorios').insert({
-                agenda_id:           null,
                 professor_id:        AppState.userProfile.id,
                 aluno_id:            alunoId,
                 conteudo_ministrado: conteudo,

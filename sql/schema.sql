@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS public.agenda_meet (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.relatorios (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    agenda_id UUID NOT NULL UNIQUE REFERENCES public.agenda_meet(id) ON DELETE CASCADE,
+    agenda_id UUID REFERENCES public.agenda_meet(id) ON DELETE SET NULL,
     professor_id UUID NOT NULL REFERENCES public.usuarios(id),
     aluno_id UUID NOT NULL REFERENCES public.usuarios(id),
     conteudo_ministrado TEXT NOT NULL,
