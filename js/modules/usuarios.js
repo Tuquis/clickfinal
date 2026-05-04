@@ -255,6 +255,7 @@ Modules.Usuarios = {
                                         <button class="btn btn-ghost btn-sm text-danger" onclick="Modules.Usuarios.toggleAtivo('${u.id}', ${u.ativo})">
                                             ${u.ativo ? 'Desativar' : 'Ativar'}
                                         </button>
+                                        <button class="btn btn-ghost btn-sm text-danger" onclick="Modules.Usuarios.confirmarDelete('${u.id}','${u.auth_id || ''}')">Excluir</button>
                                     </div>
                                 </td>
                             </tr>
@@ -537,5 +538,43 @@ Modules.Usuarios = {
         await auditLog('USUARIO_' + (ativo ? 'DESATIVADO' : 'ATIVADO'), 'usuarios', id, { ativo: !ativo });
         showToast('Usuário ' + (ativo ? 'desativado' : 'ativado'), 'success');
         await this.loadList();
+    },
+
+    async confirmarDelete(id, authId) {
+        var confirmed = await confirmAction(
+            'Excluir permanentemente? Todos os dados do usuário (relatórios, agenda, financeiro) serão apagados. Esta ação não pode ser desfeita.'
+        );
+        if (!confirmed) return;
+
+        setLoading(null, true);
+        try {
+            // 1. Remove do Supabase Auth (se tiver auth_id)
+            if (authId) {
+                await this._deletarAuthUser(authId);
+            }
+
+            // 2. Remove da tabela usuarios (cascade cuida do resto)
+            var del = await supabase.from('usuarios').delete().eq('id', id);
+            if (del.error) throw del.error;
+
+            await auditLog('USUARIO_EXCLUIDO', 'usuarios', id, {});
+            showToast('Usuário excluído permanentemente', 'success');
+            await this.loadList();
+        } catch (err) {
+            showToast(err.message || 'Erro ao excluir usuário', 'error');
+        } finally {
+            setLoading(null, false);
+        }
+    },
+
+    async _deletarAuthUser(authId) {
+        if (!window.SUPABASE_SERVICE_KEY || window.SUPABASE_SERVICE_KEY === 'COLE_SUA_SERVICE_ROLE_KEY_AQUI') return;
+        await fetch(window.SUPABASE_URL + '/auth/v1/admin/users/' + authId, {
+            method: 'DELETE',
+            headers: {
+                'apikey': window.SUPABASE_SERVICE_KEY,
+                'Authorization': 'Bearer ' + window.SUPABASE_SERVICE_KEY
+            }
+        });
     }
 };

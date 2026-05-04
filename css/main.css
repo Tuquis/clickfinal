@@ -508,6 +508,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 }
 
 .modal-open { display: flex; }
+.modal-sub  { z-index: 300; }
 
 .modal-box {
     background: var(--color-surface);
@@ -875,11 +876,165 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .tarefa-desc { display: block; }
 .tarefa-concluida-em { display: block; font-size: 0.7rem; color: var(--color-text-3); }
 .tarefa-evidencia-link { font-size: 0.75rem; color: var(--color-blue); }
+.tarefa-info { font-size: 0.72rem; color: var(--color-text-3); margin-top: 2px; font-style: italic; }
+
+/* Tarefa clicável (aluno) */
+.tarefa-clicavel {
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: border-color var(--transition), background var(--transition), transform var(--transition);
+}
+.tarefa-clicavel:hover {
+    border-color: var(--color-primary);
+    background: var(--color-surface-2);
+    transform: translateX(2px);
+}
+.tarefa-click-hint {
+    display: block;
+    font-size: .68rem;
+    color: var(--color-primary);
+    margin-top: 2px;
+    opacity: .75;
+}
+.check-cam { font-size: .95rem; }
+
+/* Evidência badge */
+.tarefa-ev-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--color-green);
+    background: var(--color-green-bg);
+    border: 1px solid #bbf7d0;
+    border-radius: 20px;
+    padding: 3px 8px;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.tarefa-ev-btn:hover { background: #d1fae5; }
+.tarefa-sem-ev {
+    font-size: .68rem;
+    color: var(--color-text-3);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Modal evidência — upload area */
+.ev-tarefa-desc-box {
+    font-size: .875rem;
+    color: var(--color-text-2);
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--color-primary);
+}
+.ev-upload-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 16px;
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+    background: var(--color-surface-2);
+}
+.ev-upload-area:hover {
+    border-color: var(--color-primary);
+    background: var(--color-purple-bg);
+}
+#ev-upload-icon { font-size: 2rem; line-height: 1; }
+#ev-upload-text { font-size: .8125rem; color: var(--color-text-3); text-align: center; }
 
 .check-icon { font-size: 1rem; width: 20px; text-align: center; }
 .checkbox { width: 16px; height: 16px; cursor: pointer; }
 
 .cronograma-footer { padding: 12px 20px; border-top: 1px solid var(--color-border-soft); text-align: right; }
+
+/* CRONOGRAMA — dia-blocos seletor */
+.cron-dias-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.cron-dia-bloco {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 14px 6px;
+    background: rgba(37, 99, 235, 0.08);
+    border: 1.5px solid rgba(37, 99, 235, 0.2);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+    user-select: none;
+}
+
+.cron-dia-bloco:hover {
+    background: rgba(37, 99, 235, 0.16);
+    border-color: rgba(37, 99, 235, 0.45);
+    transform: translateY(-2px);
+}
+
+.cron-dia-bloco.cron-dia-ativo {
+    background: rgba(37, 99, 235, 0.2);
+    border-color: #2563eb;
+}
+
+.cron-dia-nome {
+    font-size: .72rem;
+    font-weight: 700;
+    color: #2563eb;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.cron-dia-plus {
+    font-size: 1.4rem;
+    font-weight: 300;
+    color: #2563eb;
+    line-height: 1;
+}
+
+.cron-dia-bloco.cron-dia-ativo .cron-dia-plus { content: '✓'; }
+
+.cron-dia-count {
+    font-size: .68rem;
+    color: var(--color-text-3);
+    text-align: center;
+}
+
+.cron-dia-bloco.cron-dia-ativo .cron-dia-count { color: #2563eb; font-weight: 600; }
+
+/* CRONOGRAMA — seção por dia na lista */
+.cron-dia-section { margin-bottom: 8px; }
+
+.cron-dia-label-list {
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #2563eb;
+    margin-bottom: 4px;
+    padding: 2px 6px;
+    background: rgba(37,99,235,.08);
+    border-radius: 4px;
+    display: inline-block;
+}
+
+@media (max-width: 480px) {
+    .cron-dias-grid { grid-template-columns: repeat(4, 1fr); }
+}
 
 .tarefa-input-row { display: flex; gap: 8px; align-items: center; }
 .tarefas-preview { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
