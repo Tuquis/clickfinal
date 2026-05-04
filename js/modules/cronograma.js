@@ -83,19 +83,21 @@ Modules.Cronograma = {
             <div class="modal-overlay" id="modal-evidencia">
                 <div class="modal-box modal-sm">
                     <div class="modal-header">
-                        <h3>Enviar Evidência</h3>
+                        <h3>Concluir Tarefa</h3>
                         <button class="modal-close" onclick="closeModal('modal-evidencia')">×</button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" id="ev-tarefa-id" />
                         <input type="hidden" id="ev-aluno-id" />
+                        <p id="ev-tarefa-desc" class="text-muted" style="font-size:.875rem;margin-bottom:14px;padding:10px;background:var(--color-surface-2);border-radius:var(--radius-sm)"></p>
                         <div class="form-group">
-                            <label class="form-label">Arquivo (opcional)</label>
+                            <label class="form-label">Evidência <span style="color:var(--color-text-3);font-weight:400">(opcional — foto, PDF ou documento)</span></label>
                             <input type="file" class="input" id="ev-arquivo" accept="image/*,.pdf,.doc,.docx" />
                         </div>
+                        <p style="font-size:.75rem;color:var(--color-text-3);margin-top:6px">Se não tiver evidência, clique em "Concluir" mesmo assim.</p>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-ghost" onclick="closeModal('modal-evidencia')">Cancelar</button>
+                        <button class="btn btn-ghost" onclick="Modules.Cronograma._cancelarEvidencia()">Cancelar</button>
                         <button class="btn btn-primary" id="btn-save-ev" onclick="Modules.Cronograma.saveEvidencia()">Concluir Tarefa</button>
                     </div>
                 </div>
@@ -216,7 +218,7 @@ Modules.Cronograma = {
                                     <div class="tarefa-check">
                                         ${isAluno && t.status === 'pendente'
                                             ? `<input type="checkbox" class="checkbox"
-                                                onchange="Modules.Cronograma.toggleTarefa('${t.id}', '${c.aluno_id}', this.checked)">`
+                                                onchange="Modules.Cronograma._onCheckTarefa('${t.id}','${c.aluno_id}',${JSON.stringify(escapeHtml(t.descricao))},this)">`
                                             : `<span class="check-icon">${t.status === 'concluida' ? '✓' : '○'}</span>`
                                         }
                                     </div>
@@ -230,10 +232,6 @@ Modules.Cronograma = {
                                             : ''
                                         }
                                     </div>
-                                    ${isAluno && t.status === 'pendente'
-                                        ? `<button class="btn btn-ghost btn-xs" onclick="Modules.Cronograma.openEvidencia('${t.id}','${c.aluno_id}')">+ Evidência</button>`
-                                        : ''
-                                    }
                                 </div>
                             `).join('')
                             : '<p class="text-muted small">Sem tarefas cadastradas</p>'
@@ -356,10 +354,21 @@ Modules.Cronograma = {
         await this._loadList();
     },
 
-    openEvidencia(tarefaId, alunoId) {
+    _onCheckTarefa(tarefaId, alunoId, desc, el) {
+        el.checked = false; // reverte até modal confirmar
+        Modules.Cronograma.openEvidencia(tarefaId, alunoId, desc);
+    },
+
+    _cancelarEvidencia() {
+        closeModal('modal-evidencia');
+    },
+
+    openEvidencia(tarefaId, alunoId, desc) {
         document.getElementById('ev-tarefa-id').value = tarefaId;
         document.getElementById('ev-aluno-id').value = alunoId;
         document.getElementById('ev-arquivo').value = '';
+        const descEl = document.getElementById('ev-tarefa-desc');
+        if (descEl) descEl.textContent = desc || '';
         openModal('modal-evidencia');
     },
 

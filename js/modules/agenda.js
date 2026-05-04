@@ -4,21 +4,31 @@
 
 Modules.Agenda = {
     _page: 1,
+    _tab: 'agenda',
     _filters: { status: '', data: '' },
 
     async render() {
+        this._tab = 'agenda';
+        this._page = 1;
+        this._filters = { status: '', data: '' };
+
         const isAdmin = Auth.can('admin');
         const isProf = Auth.can('professor');
         const isAluno = Auth.can('aluno');
-        const isPsico = Auth.can('psicopedagoga');
 
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Agenda${isProf ? ' — Minhas Aulas' : isAluno ? ' — Minhas Aulas' : ''}</h1>
                 ${isAdmin ? `<button class="btn btn-primary" onclick="Modules.Agenda.openCreate()">+ Agendar Aula</button>` : ''}
             </div>
+
+            <div class="tabs-bar">
+                <button class="tab-btn active" id="tab-btn-agenda" onclick="Modules.Agenda._setTab('agenda')">Agenda</button>
+                <button class="tab-btn" id="tab-btn-historico" onclick="Modules.Agenda._setTab('historico')">Histórico</button>
+            </div>
+
             <div class="card">
-                <div class="card-toolbar">
+                <div class="card-toolbar" id="agenda-toolbar">
                     <select class="input" id="filter-status-agenda" onchange="Modules.Agenda._applyFilter()">
                         <option value="">Todos os status</option>
                         <option value="agendada">Agendada</option>
@@ -71,7 +81,7 @@ Modules.Agenda = {
                             <textarea class="input textarea" id="ag-conteudo" rows="3" placeholder="Descreva o conteúdo que será abordado"></textarea>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Link Google Meet</label>
+                            <label class="form-label">Link Google Meet <span style="font-size:.75rem;color:var(--color-text-3)">(preenchido automaticamente pelo professor)</span></label>
                             <input type="url" class="input" id="ag-meet" placeholder="https://meet.google.com/..." />
                         </div>
                         <div id="ag-disponibilidade-info" class="info-box" style="display:none">
@@ -105,13 +115,43 @@ Modules.Agenda = {
             </div>
         `);
 
-        // Observar seleção de professor para mostrar disponibilidade
-        document.getElementById('ag-professor')?.addEventListener('change', (e) => {
-            if (e.target.value) Modules.Agenda._showDisponibilidade(e.target.value);
-            else document.getElementById('ag-disponibilidade-info').style.display = 'none';
+        // Professor: ao selecionar, busca disponibilidade e preenche link_meet automaticamente
+        document.getElementById('ag-professor')?.addEventListener('change', async (e) => {
+            const profId = e.target.value;
+            if (!profId) {
+                document.getElementById('ag-disponibilidade-info').style.display = 'none';
+                return;
+            }
+            Modules.Agenda._showDisponibilidade(profId);
+            const { data: pi } = await supabase
+                .from('professores_info')
+                .select('link_meet')
+                .eq('usuario_id', profId)
+                .single();
+            const meetInput = document.getElementById('ag-meet');
+            if (meetInput && pi?.link_meet) meetInput.value = pi.link_meet;
         });
 
         await this.loadList();
+    },
+
+    _setTab(tab) {
+        this._tab = tab;
+        this._page = 1;
+        this._filters = { status: '', data: '' };
+
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-btn-' + tab)?.classList.add('active');
+
+        // Oculta filtro de status na aba Agenda (sempre mostra agendada)
+        const statusSel = document.getElementById('filter-status-agenda');
+        if (statusSel) statusSel.style.display = tab === 'agenda' ? 'none' : '';
+
+        // Limpa inputs de filtro
+        if (document.getElementById('filter-data-agenda'))
+            document.getElementById('filter-data-agenda').value = '';
+
+        this.loadList();
     },
 
     _applyFilter() {
@@ -122,8 +162,10 @@ Modules.Agenda = {
     },
 
     _clearFilters() {
-        document.getElementById('filter-status-agenda').value = '';
-        document.getElementById('filter-data-agenda').value = '';
+        const statusEl = document.getElementById('filter-status-agenda');
+        const dataEl = document.getElementById('filter-data-agenda');
+        if (statusEl) statusEl.value = '';
+        if (dataEl) dataEl.value = '';
         this._filters = { status: '', data: '' };
         this._page = 1;
         this.loadList();
@@ -132,20 +174,35 @@ Modules.Agenda = {
     async loadList() {
         const container = document.getElementById('agenda-list');
         if (!container) return;
+        container.innerHTML = '<div class="loader-inline"></div>';
 
         const uid = AppState.userProfile.id;
         const role = AppState.role;
+        const isHistorico = this._tab === 'historico';
 
         let query = supabase
             .from('v_agenda_completa')
-            .select('*', { count: 'exact' })
-            .order('data', { ascending: false })
-            .order('horario', { ascending: false });
+            .select('*', { count: 'exact' });
 
         if (role === 'professor') query = query.eq('professor_id', uid);
         if (role === 'aluno') query = query.eq('aluno_id', uid);
 
-        if (this._filters.status) query = query.eq('status', this._filters.status);
+        if (isHistorico) {
+            // Histórico: aulas passadas ou com status realizada/cancelada
+            query = query
+                .or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`)
+                .order('data', { ascending: false })
+                .order('horario', { ascending: false });
+            if (this._filters.status) query = query.eq('status', this._filters.status);
+        } else {
+            // Agenda: apenas agendadas a partir de hoje
+            query = query
+                .eq('status', 'agendada')
+                .gte('data', todayISO())
+                .order('data', { ascending: true })
+                .order('horario', { ascending: true });
+        }
+
         if (this._filters.data) query = query.eq('data', this._filters.data);
 
         const from = (this._page - 1) * APP_CONFIG.paginationSize;
@@ -157,58 +214,73 @@ Modules.Agenda = {
             return;
         }
 
+        // Filtra aulas de hoje que expiraram (60 min após horário)
+        let displayData = data || [];
+        if (!isHistorico) {
+            const now = new Date();
+            displayData = displayData.filter(a => {
+                if (a.data !== todayISO()) return true;
+                const [h, m] = (a.horario || '00:00').split(':').map(Number);
+                const expiry = new Date();
+                expiry.setHours(h, m + 60, 0, 0);
+                return expiry > now;
+            });
+        }
+
         const totalPages = Math.ceil((count || 0) / APP_CONFIG.paginationSize);
         const isAdmin = Auth.can('admin');
 
         container.innerHTML = `
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Horário</th>
-                        <th>Aluno</th>
-                        <th>Professor</th>
-                        <th>Conteúdo</th>
-                        <th>Status</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data?.length
-                        ? data.map(a => {
-                            const s = fmt.status_aula(a.status);
-                            return `
-                                <tr>
-                                    <td>${fmt.date(a.data)}</td>
-                                    <td>${fmt.time(a.horario)}</td>
-                                    <td>${escapeHtml(a.aluno_nome)}</td>
-                                    <td>${escapeHtml(a.professor_nome)}</td>
-                                    <td class="td-truncate">${escapeHtml(a.conteudo)}</td>
-                                    <td>${badge(s.label, s.class)}</td>
-                                    <td>
-                                        <div class="action-btns">
-                                            ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-ghost btn-sm">Meet</a>` : ''}
-                                            ${a.status === 'agendada' && Auth.can('professor') && a.professor_id === uid && !a.relatorio_id
-                                                ? `<button class="btn btn-sm btn-primary" onclick="Modules.Relatorios.openForm('${a.id}','${a.aluno_id}')">Relatório</button>`
-                                                : ''
-                                            }
-                                            ${a.relatorio_id
-                                                ? `<button class="btn btn-ghost btn-sm" onclick="Modules.Relatorios.openView('${a.relatorio_id}')">Ver Rel.</button>`
-                                                : ''
-                                            }
-                                            ${isAdmin && a.status === 'agendada'
-                                                ? `<button class="btn btn-ghost btn-sm text-danger" onclick="Modules.Agenda.openCancelar('${a.id}')">Cancelar</button>`
-                                                : ''
-                                            }
-                                        </div>
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')
-                        : `<tr><td colspan="7">${emptyState('Nenhuma aula encontrada')}</td></tr>`
-                    }
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Horário</th>
+                            <th>Aluno</th>
+                            <th>Professor</th>
+                            <th>Conteúdo</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${displayData.length
+                            ? displayData.map(a => {
+                                const s = fmt.status_aula(a.status);
+                                return `
+                                    <tr>
+                                        <td>${fmt.date(a.data)}</td>
+                                        <td>${fmt.time(a.horario)}</td>
+                                        <td>${escapeHtml(a.aluno_nome)}</td>
+                                        <td>${escapeHtml(a.professor_nome)}</td>
+                                        <td class="td-truncate">${escapeHtml(a.conteudo)}</td>
+                                        <td>${badge(s.label, s.class)}</td>
+                                        <td>
+                                            <div class="action-btns">
+                                                ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-ghost btn-sm">Meet</a>` : ''}
+                                                ${a.status === 'agendada' && Auth.can('professor') && a.professor_id === uid && !a.relatorio_id
+                                                    ? `<button class="btn btn-sm btn-primary" onclick="Modules.Relatorios.openForm('${a.id}','${a.aluno_id}')">Relatório</button>`
+                                                    : ''
+                                                }
+                                                ${a.relatorio_id
+                                                    ? `<button class="btn btn-ghost btn-sm" onclick="Modules.Relatorios.openView('${a.relatorio_id}')">Ver Rel.</button>`
+                                                    : ''
+                                                }
+                                                ${isAdmin && a.status === 'agendada'
+                                                    ? `<button class="btn btn-ghost btn-sm text-danger" onclick="Modules.Agenda.openCancelar('${a.id}')">Cancelar</button>`
+                                                    : ''
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')
+                            : `<tr><td colspan="7">${emptyState(isHistorico ? 'Nenhum histórico encontrado' : 'Nenhuma aula agendada')}</td></tr>`
+                        }
+                    </tbody>
+                </table>
+            </div>
             ${paginationHtml(this._page, totalPages, 'Modules.Agenda._goPage')}
         `;
     },
@@ -228,7 +300,6 @@ Modules.Agenda = {
         document.getElementById('ag-meet').value = '';
         document.getElementById('ag-disponibilidade-info').style.display = 'none';
 
-        // Carregar alunos e professores
         const [{ data: alunos }, { data: profs }] = await Promise.all([
             supabase.from('usuarios').select('id,nome').eq('role','aluno').eq('ativo',true).order('nome'),
             supabase.from('usuarios').select('id,nome').eq('role','professor').eq('ativo',true).order('nome')

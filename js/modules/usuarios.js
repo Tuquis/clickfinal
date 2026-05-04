@@ -115,6 +115,11 @@ Modules.Usuarios = {
                                 <input type="text" class="input" id="u-pix"
                                     placeholder="CPF, email, telefone ou chave aleatória" />
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">Link Google Meet (permanente)</label>
+                                <input type="url" class="input" id="u-link-meet"
+                                    placeholder="https://meet.google.com/..." />
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -151,6 +156,14 @@ Modules.Usuarios = {
         `);
 
         await this.loadList();
+
+        if (window._prefillRole) {
+            var role = window._prefillRole;
+            delete window._prefillRole;
+            this.openCreate();
+            var roleEl = document.getElementById('u-role');
+            if (roleEl) { roleEl.value = role; this._onRoleChange(role); }
+        }
     },
 
     _onSearch: debounce(async function(v) {
@@ -277,6 +290,7 @@ Modules.Usuarios = {
         document.getElementById('u-aulas').value = '0';
         document.getElementById('u-materia').value = '';
         document.getElementById('u-pix').value = '';
+        document.getElementById('u-link-meet').value = '';
         openModal('modal-usuario');
     },
 
@@ -314,8 +328,9 @@ Modules.Usuarios = {
             var piRes = await supabase.from('professores_info').select('*').eq('usuario_id', id).single();
             var pi = piRes.data;
             if (pi) {
-                document.getElementById('u-materia').value = pi.materia  || '';
-                document.getElementById('u-pix').value     = pi.chave_pix || '';
+                document.getElementById('u-materia').value    = pi.materia   || '';
+                document.getElementById('u-pix').value        = pi.chave_pix || '';
+                document.getElementById('u-link-meet').value  = pi.link_meet || '';
             }
         }
         openModal('modal-usuario');
@@ -411,8 +426,9 @@ Modules.Usuarios = {
         if (role === 'professor') {
             var materia   = document.getElementById('u-materia').value.trim();
             var chavePix  = document.getElementById('u-pix').value.trim();
+            var linkMeet  = document.getElementById('u-link-meet').value.trim();
             if (!materia) errors.push('Matéria é obrigatória');
-            profData = { materia, chave_pix: chavePix || null };
+            profData = { materia, chave_pix: chavePix || null, link_meet: linkMeet || null };
         }
 
         if (errors.length) return showToast(errors[0], 'error');
@@ -463,10 +479,11 @@ Modules.Usuarios = {
                     if (insAi.error) throw insAi.error;
                 } else if (role === 'professor') {
                     await supabase.from('professores_info').insert({
-                        usuario_id:     newUser.id,
+                        usuario_id:        newUser.id,
                         saldo_aulas_dadas: 0,
-                        materia:        profData ? profData.materia   : null,
-                        chave_pix:      profData ? profData.chave_pix : null
+                        materia:           profData ? profData.materia    : null,
+                        chave_pix:         profData ? profData.chave_pix  : null,
+                        link_meet:         profData ? profData.link_meet  : null
                     });
                 }
 

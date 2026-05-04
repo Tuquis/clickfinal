@@ -58,7 +58,6 @@ const SIDEBAR_ITEMS = {
         { id: 'agenda',         icon: '📅', label: 'Minhas Aulas' },
         { id: 'cronograma',     icon: '📋', label: 'Cronograma' },
         { id: 'atividades',     icon: '📝', label: 'Atividades' },
-        { id: 'financeiro',     icon: '💰', label: 'Financeiro' },
     ],
     psicopedagoga: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },

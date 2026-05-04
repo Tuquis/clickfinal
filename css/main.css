@@ -758,6 +758,34 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .proxima-aula-data { font-size: 1.125rem; font-weight: 600; margin-bottom: 4px; }
 .proxima-aula-info { font-size: 0.875rem; color: var(--color-text-2); }
 
+/* TABS */
+.tabs-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--color-border);
+    padding-bottom: 0;
+}
+.tab-btn {
+    padding: 8px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-3);
+    cursor: pointer;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    transition: color var(--transition), border-color var(--transition);
+}
+.tab-btn:hover { color: var(--color-primary); }
+.tab-btn.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    font-weight: 600;
+}
+
 /* DISPONIBILIDADE */
 .disponibilidade-grid {
     display: grid;
@@ -1315,6 +1343,21 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     padding: 2px 6px;
     color: var(--color-text-2);
 }
+
+.prof-ganho-badge {
+    font-size: .78rem;
+    color: var(--color-text-2);
+    padding: 3px 10px;
+    background: var(--color-surface-2);
+    border-radius: 20px;
+    border: 1px solid var(--color-border);
+}
+.prof-ganho-total {
+    background: var(--color-primary);
+    color: #fff;
+    border-color: var(--color-primary);
+}
+.prof-ganho-total strong { color: #fff; }
 
 .prof-admin-grid {
     display: grid;

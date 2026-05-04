@@ -139,7 +139,7 @@ Modules.Relatorios = {
                 <tbody>
                     ${data.map(function(r) { return `
                         <tr>
-                            <td>${fmt.date(r.created_at)}</td>
+                            <td>${fmt.date(r.created_at.substring(0, 10))}</td>
                             <td>${escapeHtml((r.aluno && r.aluno.nome) || '—')}</td>
                             ${!Auth.can('aluno') ? '<td>' + escapeHtml((r.professor && r.professor.nome) || '—') + '</td>' : ''}
                             <td>${badge(r.comportamento, Modules.Relatorios._badgeComp(r.comportamento))}</td>
@@ -172,7 +172,7 @@ Modules.Relatorios = {
     },
 
     // ── ABRIR MODAL VALIDAR AULA ──────────────────────────────────
-    async openValidarAula() {
+    async openValidarAula(prefillAlunoId) {
         openModal('modal-validar-aula');
         var body = document.getElementById('validar-body');
         body.innerHTML = '<div class="loader-inline"></div>';
@@ -185,6 +185,8 @@ Modules.Relatorios = {
             .order('nome');
 
         var alunos = res.data || [];
+
+        var _prefillAluno = prefillAlunoId || null;
 
         body.innerHTML = `
             <input type="hidden" id="rel-aluno-id" />
@@ -309,6 +311,14 @@ Modules.Relatorios = {
                 </div>
             </div>
         `;
+
+        if (_prefillAluno) {
+            var sel = document.getElementById('rel-aluno-select');
+            if (sel) {
+                sel.value = _prefillAluno;
+                Modules.Relatorios._onAlunoSelect(_prefillAluno);
+            }
+        }
     },
 
     _onAlunoSelect: function(alunoId) {

@@ -106,31 +106,18 @@ Modules.Dashboard = {
     async _professor() {
         const id = AppState.userProfile.id;
 
-        const { data: hoje } = await supabase
-            .from('v_agenda_completa')
-            .select('*')
-            .eq('professor_id', id)
-            .eq('data', todayISO())
-            .order('horario');
+        const [{ data: hoje }, { data: semana }, { data: profInfo }] = await Promise.all([
+            supabase.from('v_agenda_completa').select('*').eq('professor_id', id).eq('data', todayISO()).order('horario'),
+            supabase.from('v_agenda_completa').select('*').eq('professor_id', id).gte('data', todayISO()).eq('status', 'agendada').order('data').limit(10),
+            supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', id).single()
+        ]);
 
-        const { data: semana } = await supabase
-            .from('v_agenda_completa')
-            .select('*')
-            .eq('professor_id', id)
-            .gte('data', todayISO())
-            .eq('status', 'agendada')
-            .order('data')
-            .limit(10);
-
-        const { data: profInfo } = await supabase
-            .from('professores_info')
-            .select('saldo_aulas_dadas')
-            .eq('usuario_id', id)
-            .single();
+        const now = new Date();
 
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Bem-vindo, ${escapeHtml(AppState.userProfile.nome.split(' ')[0])}</h1>
+                <button class="btn btn-primary" onclick="Modules.Dashboard._lancarAula()">✓ Lançar Aula</button>
             </div>
             <div class="stats-grid stats-grid-3">
                 ${Modules.Dashboard._statCard('Aulas Hoje', hoje?.length || 0, '📅', 'stat-blue')}
@@ -144,23 +131,27 @@ Modules.Dashboard = {
                 </div>
                 <div class="card-body">
                     ${hoje?.length
-                        ? hoje.map(a => `
-                            <div class="aula-card ${a.status}">
+                        ? hoje.map(a => {
+                            const [h, m] = (a.horario || '00:00').split(':').map(Number);
+                            const expiry = new Date(); expiry.setHours(h, m + 60, 0, 0);
+                            const expirada = expiry < now;
+                            return `
+                            <div class="aula-card ${a.status}${expirada ? ' realizada' : ''}">
                                 <div class="aula-time">${fmt.time(a.horario)}</div>
                                 <div class="aula-info">
                                     <div class="aula-aluno">${escapeHtml(a.aluno_nome)}</div>
                                     <div class="aula-conteudo">${escapeHtml(a.conteudo)}</div>
-                                    <div class="aula-meta">${escapeHtml(a.serie)} • ${escapeHtml(a.disciplina)}</div>
+                                    <div class="aula-meta">${escapeHtml(a.serie || '')} • ${escapeHtml(a.disciplina || '')}</div>
                                 </div>
                                 <div class="aula-actions">
                                     ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-sm btn-primary">Entrar no Meet</a>` : ''}
-                                    ${a.status === 'agendada' && !a.relatorio_id
-                                        ? `<button class="btn btn-sm btn-secondary" onclick="Modules.Relatorios.openForm('${a.id}','${a.aluno_id}')">Relatório</button>`
-                                        : a.relatorio_id ? `<span class="badge badge-success">Relatório enviado</span>` : ''
+                                    ${!a.relatorio_id
+                                        ? `<button class="btn btn-sm btn-secondary" onclick="Modules.Dashboard._lancarAula('${a.aluno_id}')">Lançar Aula</button>`
+                                        : `<span class="badge badge-success">Aula lançada</span>`
                                     }
                                 </div>
                             </div>
-                        `).join('')
+                        `}).join('')
                         : emptyState('Nenhuma aula agendada para hoje')
                     }
                 </div>
@@ -168,67 +159,54 @@ Modules.Dashboard = {
         `);
     },
 
+    async _lancarAula(alunoId) {
+        await Router.navigate('relatorios');
+        Modules.Relatorios.openValidarAula(alunoId || null);
+    },
+
     async _aluno() {
         const id = AppState.userProfile.id;
 
-        const { data: alunoInfo } = await supabase
-            .from('alunos_info')
-            .select('*')
-            .eq('usuario_id', id)
-            .single();
-
-        const { data: proximaAula } = await supabase
-            .from('v_agenda_completa')
-            .select('*')
-            .eq('aluno_id', id)
-            .gte('data', todayISO())
-            .eq('status', 'agendada')
-            .order('data')
-            .order('horario')
-            .limit(1)
-            .single();
-
-        const { data: tarefas } = await supabase
-            .from('cronograma_tarefas')
-            .select('*, cronograma!inner(aluno_id)')
-            .eq('cronograma.aluno_id', id)
-            .eq('status', 'pendente')
-            .limit(5);
-
-        const { data: cobrancas } = await supabase
-            .from('financeiro')
-            .select('*')
-            .eq('aluno_id', id)
-            .in('status', ['pendente','atrasado'])
-            .order('vencimento');
+        const [{ data: alunoInfo }, { data: proximasAulas }, { data: tarefas }] = await Promise.all([
+            supabase.from('alunos_info').select('*').eq('usuario_id', id).single(),
+            supabase.from('v_agenda_completa').select('*').eq('aluno_id', id).gte('data', todayISO()).eq('status', 'agendada').order('data').order('horario').limit(5),
+            supabase.from('cronograma_tarefas').select('*, cronograma!inner(aluno_id)').eq('cronograma.aluno_id', id).eq('status', 'pendente').limit(5)
+        ]);
 
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Olá, ${escapeHtml(AppState.userProfile.nome.split(' ')[0])}</h1>
             </div>
-            <div class="stats-grid stats-grid-3">
+            <div class="stats-grid stats-grid-2">
                 ${Modules.Dashboard._statCard('Aulas Disponíveis', alunoInfo?.aulas_disponiveis || 0, '🎓', 'stat-blue')}
                 ${Modules.Dashboard._statCard('Tarefas Pendentes', tarefas?.length || 0, '📋', 'stat-purple')}
-                ${Modules.Dashboard._statCard('Cobranças Abertas', cobrancas?.length || 0, '💰', cobrancas?.some(c=>c.status==='atrasado') ? 'stat-red' : 'stat-gold')}
             </div>
-            ${proximaAula ? `
-            <div class="card card-highlight">
-                <div class="card-body">
-                    <div class="proxima-aula-header">
-                        <span class="label">Próxima aula</span>
-                        ${badge('Agendada', 'badge-info')}
-                    </div>
-                    <div class="proxima-aula-data">
-                        <strong>${fmt.date(proximaAula.data)}</strong> às <strong>${fmt.time(proximaAula.horario)}</strong>
-                    </div>
-                    <div class="proxima-aula-info">
-                        ${escapeHtml(proximaAula.conteudo)} · Prof. ${escapeHtml(proximaAula.professor_nome)}
-                    </div>
-                    ${proximaAula.link_meet
-                        ? `<a href="${escapeHtml(proximaAula.link_meet)}" target="_blank" class="btn btn-primary mt-2">Acessar Google Meet</a>`
-                        : ''}
+            <div class="card">
+                <div class="card-header">
+                    <h3>Próximas Aulas</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
                 </div>
-            </div>` : ''}
+                <div class="card-body">
+                    ${proximasAulas?.length
+                        ? proximasAulas.map(a => `
+                            <div class="aula-card">
+                                <div class="aula-time">${fmt.time(a.horario)}</div>
+                                <div class="aula-info">
+                                    <div class="aula-aluno">${fmt.date(a.data)}</div>
+                                    <div class="aula-conteudo">${escapeHtml(a.conteudo)}</div>
+                                    <div class="aula-meta">Prof. ${escapeHtml(a.professor_nome)}</div>
+                                </div>
+                                <div class="aula-actions">
+                                    ${a.link_meet
+                                        ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-sm btn-primary">Entrar na Sala</a>`
+                                        : ''}
+                                </div>
+                            </div>
+                        `).join('')
+                        : emptyState('Nenhuma aula agendada')
+                    }
+                </div>
+            </div>
         `);
     },
 

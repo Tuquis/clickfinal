@@ -47,6 +47,9 @@ Modules.Professores = {
         const anoCount = this._contagemAno(now.getFullYear());
         const mesLabel = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
+        const totalGanho = total * 20;
+        const anoGanho   = anoCount * 20;
+
         document.getElementById('prof-wrap').innerHTML = `
             <div class="stats-grid stats-grid-3" style="margin-bottom:20px">
                 <div class="stat-card stat-purple">
@@ -71,12 +74,27 @@ Modules.Professores = {
                     </div>
                 </div>
             </div>
+
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-header" style="padding:10px 16px">
+                    <h3 style="font-size:.85rem">Ganhos — ${now.getFullYear()}</h3>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <span class="prof-ganho-badge">Ano: <strong>${fmt.currency(anoGanho)}</strong></span>
+                        <span class="prof-ganho-badge prof-ganho-total">Total: <strong>${fmt.currency(totalGanho)}</strong></span>
+                    </div>
+                </div>
+                <div class="card-body" style="padding:10px 16px;height:130px">
+                    <canvas id="prof-ganhos-chart" height="110"></canvas>
+                </div>
+            </div>
+
             <div class="card prof-cal-card">
                 <div class="card-body" id="prof-cal-wrap"></div>
             </div>
         `;
 
         this._renderCalendario('prof-cal-wrap');
+        this._renderChart('prof-ganhos-chart', now.getFullYear());
     },
 
     // ── VISÃO ADMIN ──────────────────────────────────────────────
@@ -85,6 +103,7 @@ Modules.Professores = {
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Professores</h1>
+                <button class="btn btn-primary" onclick="Modules.Professores._addProf()">+ Adicionar Professor</button>
             </div>
             <div class="prof-admin-grid" id="prof-admin-grid">
                 <div class="prof-admin-lista">
@@ -100,20 +119,35 @@ Modules.Professores = {
                     </div>
                 </div>
                 <div class="prof-admin-cal" id="prof-cal-panel" style="display:none">
-                    <div class="card">
+                    <div class="card" style="margin-bottom:12px">
                         <div class="card-header">
                             <div>
                                 <h3 id="prof-cal-nome" style="font-size:.9rem;margin:0"></h3>
                                 <div id="prof-cal-stats" style="font-size:.75rem;color:var(--color-text-3);margin-top:3px"></div>
                             </div>
+                            <div id="prof-admin-ganho" style="display:none;font-size:.8rem;font-weight:600;color:var(--color-primary)"></div>
                         </div>
                         <div class="card-body" id="prof-cal-wrap"></div>
+                    </div>
+                    <div class="card" id="prof-chart-card" style="display:none">
+                        <div class="card-header" style="padding:10px 16px">
+                            <h3 style="font-size:.85rem">Ganhos mensais</h3>
+                            <span id="prof-chart-total" style="font-size:.78rem;font-weight:600;color:var(--color-primary)"></span>
+                        </div>
+                        <div class="card-body" style="padding:10px 16px;height:130px">
+                            <canvas id="prof-ganhos-chart-admin" height="110"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
         `);
 
         await this._loadAdmin();
+    },
+
+    _addProf() {
+        window._prefillRole = 'professor';
+        Router.navigate('usuarios');
     },
 
     async _loadAdmin() {
@@ -275,7 +309,24 @@ Modules.Professores = {
             statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${anoCount} em ${now.getFullYear()}  ·  ${this._relatorios.length} no total`;
         }
 
+        const totalGanho = this._relatorios.length * 20;
+        const ganhoEl = document.getElementById('prof-admin-ganho');
+        if (ganhoEl) {
+            ganhoEl.textContent = fmt.currency(totalGanho) + ' total';
+            ganhoEl.style.display = 'block';
+        }
+
         this._renderCalendario('prof-cal-wrap');
+
+        // Gráfico de ganhos
+        const chartCard = document.getElementById('prof-chart-card');
+        const chartTotal = document.getElementById('prof-chart-total');
+        if (chartCard) {
+            chartCard.style.display = 'block';
+            const anoCount = this._contagemAno(now.getFullYear());
+            if (chartTotal) chartTotal.textContent = 'Total ' + now.getFullYear() + ': ' + fmt.currency(anoCount * 20);
+            this._renderChart('prof-ganhos-chart-admin', now.getFullYear());
+        }
     },
 
     // ── NAVEGAÇÃO ────────────────────────────────────────────────
@@ -382,5 +433,83 @@ Modules.Professores = {
                 </div>
             </div>
         `;
+    },
+
+    // ── GRÁFICO DE GANHOS ────────────────────────────────────────
+
+    _renderChart(canvasId, year) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !window.Chart) return;
+
+        const MESES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+        const contagemMes = Array(12).fill(0);
+        this._relatorios.forEach(r => {
+            const d = new Date(r.created_at);
+            if (d.getFullYear() === year) {
+                contagemMes[d.getMonth()]++;
+            }
+        });
+
+        const valores = contagemMes.map(c => c * 20);
+        const totalAno = valores.reduce((a, b) => a + b, 0);
+
+        // Destrói instância anterior se existir
+        if (canvas._chartInst) {
+            canvas._chartInst.destroy();
+            canvas._chartInst = null;
+        }
+
+        canvas._chartInst = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: MESES_SHORT,
+                datasets: [{
+                    label: 'Ganhos (R$)',
+                    data: valores,
+                    backgroundColor: contagemMes.map((_, i) => {
+                        const now = new Date();
+                        return i === now.getMonth() && year === now.getFullYear()
+                            ? 'rgba(124,58,237,1)'
+                            : 'rgba(124,58,237,0.55)';
+                    }),
+                    borderColor: 'rgba(124,58,237,0.8)',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const aulas = contagemMes[ctx.dataIndex];
+                                return `${aulas} aula${aulas !== 1 ? 's' : ''} · R$ ${ctx.parsed.y.toFixed(2)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            font: { size: 10 },
+                            callback: v => 'R$' + v.toFixed(0)
+                        },
+                        grid: { color: 'rgba(0,0,0,.05)' }
+                    },
+                    x: {
+                        ticks: { font: { size: 10 } },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+
+        return totalAno;
     }
 };
