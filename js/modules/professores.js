@@ -80,12 +80,10 @@ Modules.Professores = {
 
             <div class="card" style="margin-bottom:16px">
                 <div class="card-header" style="padding:10px 16px">
-                    <h3 style="font-size:.85rem">Ganhos</h3>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <span class="prof-ganho-badge prof-ganho-total">Total: <strong>${fmt.currency(totalGanho)}</strong></span>
-                    </div>
+                    <h3 style="font-size:.85rem">Ganhos ${now.getFullYear()}</h3>
+                    <span class="prof-ganho-badge prof-ganho-total"><strong>${fmt.currency(totalGanho)}</strong></span>
                 </div>
-                <div class="card-body" style="padding:10px 16px;height:130px">
+                <div class="card-body" style="padding:6px 12px;height:130px">
                     <canvas id="prof-ganhos-chart" height="110"></canvas>
                 </div>
             </div>
@@ -437,41 +435,44 @@ Modules.Professores = {
         if (!canvas || !window.Chart) return;
 
         const MESES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+        const now = new Date();
+        const mesAtual = year === now.getFullYear() ? now.getMonth() : 11;
 
+        // Conta aulas por mês só até o mês atual do ano
         const contagemMes = Array(12).fill(0);
         this._relatorios.forEach(r => {
             const d = new Date(r.created_at);
-            if (d.getFullYear() === year) {
-                contagemMes[d.getMonth()]++;
-            }
+            if (d.getFullYear() === year) contagemMes[d.getMonth()]++;
         });
 
-        const valores = contagemMes.map(c => c * 20);
-        const totalAno = valores.reduce((a, b) => a + b, 0);
+        // Acumula ganhos mês a mês (linha sobe continuamente)
+        const labels = MESES_SHORT.slice(0, mesAtual + 1);
+        let acc = 0;
+        const cumulativo = contagemMes.slice(0, mesAtual + 1).map(c => {
+            acc += c * 20;
+            return acc;
+        });
 
-        // Destrói instância anterior se existir
-        if (canvas._chartInst) {
-            canvas._chartInst.destroy();
-            canvas._chartInst = null;
-        }
+        if (canvas._chartInst) { canvas._chartInst.destroy(); canvas._chartInst = null; }
 
-        canvas._chartInst = new Chart(canvas.getContext('2d'), {
-            type: 'bar',
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, 110);
+        grad.addColorStop(0, 'rgba(124,58,237,0.35)');
+        grad.addColorStop(1, 'rgba(124,58,237,0)');
+
+        canvas._chartInst = new Chart(ctx, {
+            type: 'line',
             data: {
-                labels: MESES_SHORT,
+                labels,
                 datasets: [{
-                    label: 'Ganhos (R$)',
-                    data: valores,
-                    backgroundColor: contagemMes.map((_, i) => {
-                        const now = new Date();
-                        return i === now.getMonth() && year === now.getFullYear()
-                            ? 'rgba(124,58,237,1)'
-                            : 'rgba(124,58,237,0.55)';
-                    }),
-                    borderColor: 'rgba(124,58,237,0.8)',
-                    borderWidth: 1,
-                    borderRadius: 6,
-                    borderSkipped: false,
+                    data: cumulativo,
+                    borderColor: 'rgba(124,58,237,1)',
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 0,
+                    fill: true,
+                    backgroundColor: grad,
+                    tension: 0.4,
                 }]
             },
             options: {
@@ -479,32 +480,15 @@ Modules.Professores = {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const aulas = contagemMes[ctx.dataIndex];
-                                return `${aulas} aula${aulas !== 1 ? 's' : ''} · R$ ${ctx.parsed.y.toFixed(2)}`;
-                            }
-                        }
-                    }
+                    tooltip: { enabled: false }
                 },
                 scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            font: { size: 10 },
-                            callback: v => 'R$' + v.toFixed(0)
-                        },
-                        grid: { color: 'rgba(0,0,0,.05)' }
-                    },
-                    x: {
-                        ticks: { font: { size: 10 } },
-                        grid: { display: false }
-                    }
+                    y: { display: false },
+                    x: { display: false }
                 }
             }
         });
 
-        return totalAno;
+        return acc;
     }
 };
