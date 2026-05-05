@@ -2,12 +2,23 @@
 // MÓDULO: PROFESSORES — Métricas + Calendário de aulas
 // ============================================================
 
+// Retorna o ajuste mensal se ajuste_mes_ref bater com o mês/ano informado
+function _ajusteMes(pi, date) {
+    if (!pi?.ajuste_aulas_mes || !pi?.ajuste_mes_ref) return 0;
+    const ref = new Date(pi.ajuste_mes_ref);
+    if (ref.getUTCFullYear() === date.getFullYear() && ref.getUTCMonth() === date.getMonth()) {
+        return pi.ajuste_aulas_mes;
+    }
+    return 0;
+}
+
 Modules.Professores = {
     _profId:     null,
     _profNome:   '',
     _mesAtual:   null,   // { year: Number, month: Number }  (month 0-indexed)
     _relatorios: [],     // { created_at } do professor selecionado / logado
     _todosProfs: [],
+    _profInfo:   null,   // professores_info do professor atual (para ajuste mensal)
 
     async render() {
         if (!Auth.can('admin', 'professor')) return;
@@ -29,11 +40,10 @@ Modules.Professores = {
         `);
 
         const uid = AppState.userProfile.id;
-        const { data: rels } = await supabase
-            .from('relatorios')
-            .select('created_at')
-            .eq('professor_id', uid)
-            .order('created_at', { ascending: false });
+        const [{ data: rels }, { data: profInfo }] = await Promise.all([
+            supabase.from('relatorios').select('created_at').eq('professor_id', uid).order('created_at', { ascending: false }),
+            supabase.from('professores_info').select('saldo_aulas_dadas, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', uid).single()
+        ]);
 
         this._relatorios = rels || [];
         this._profId     = uid;
@@ -41,29 +51,22 @@ Modules.Professores = {
 
         const now = new Date();
         this._mesAtual = { year: now.getFullYear(), month: now.getMonth() };
+        this._profInfo  = profInfo;
 
-        const total    = this._relatorios.length;
-        const mesCount = this._contagemMes(now.getFullYear(), now.getMonth());
-        const anoCount = this._contagemAno(now.getFullYear());
+        const total    = profInfo?.saldo_aulas_dadas || 0;
+        const ajusteMes = _ajusteMes(profInfo, now);
+        const mesCount = this._contagemMes(now.getFullYear(), now.getMonth()) + ajusteMes;
         const mesLabel = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
         const totalGanho = total * 20;
-        const anoGanho   = anoCount * 20;
 
         document.getElementById('prof-wrap').innerHTML = `
-            <div class="stats-grid stats-grid-3" style="margin-bottom:20px">
+            <div class="stats-grid stats-grid-2" style="margin-bottom:20px">
                 <div class="stat-card stat-purple">
                     <div class="stat-icon">📅</div>
                     <div>
                         <div class="stat-value">${mesCount}</div>
                         <div class="stat-label">Aulas em ${mesLabel}</div>
-                    </div>
-                </div>
-                <div class="stat-card stat-teal">
-                    <div class="stat-icon">📆</div>
-                    <div>
-                        <div class="stat-value">${anoCount}</div>
-                        <div class="stat-label">Aulas em ${now.getFullYear()}</div>
                     </div>
                 </div>
                 <div class="stat-card stat-blue">
@@ -77,9 +80,8 @@ Modules.Professores = {
 
             <div class="card" style="margin-bottom:16px">
                 <div class="card-header" style="padding:10px 16px">
-                    <h3 style="font-size:.85rem">Ganhos — ${now.getFullYear()}</h3>
+                    <h3 style="font-size:.85rem">Ganhos</h3>
                     <div style="display:flex;gap:8px;align-items:center">
-                        <span class="prof-ganho-badge">Ano: <strong>${fmt.currency(anoGanho)}</strong></span>
                         <span class="prof-ganho-badge prof-ganho-total">Total: <strong>${fmt.currency(totalGanho)}</strong></span>
                     </div>
                 </div>
@@ -151,11 +153,15 @@ Modules.Professores = {
     },
 
     async _loadAdmin() {
-        const { data: profs, error } = await supabase
-            .from('usuarios')
-            .select('id, nome, email, ativo, professores_info(materia, chave_pix)')
-            .eq('role', 'professor')
-            .order('nome');
+        const [
+            { data: profs, error },
+            { data: profInfos },
+            { data: rels }
+        ] = await Promise.all([
+            supabase.from('usuarios').select('id, nome, email, ativo').eq('role', 'professor').order('nome'),
+            supabase.from('professores_info').select('usuario_id, materia, chave_pix, saldo_aulas_dadas, ajuste_aulas_mes, ajuste_mes_ref'),
+            supabase.from('relatorios').select('professor_id, created_at')
+        ]);
 
         if (error) {
             document.getElementById('prof-list-wrap').innerHTML =
@@ -168,33 +174,26 @@ Modules.Professores = {
             return;
         }
 
-        const now = new Date();
-        const { data: rels } = await supabase
-            .from('relatorios')
-            .select('professor_id, created_at');
+        // Indexar professores_info por usuario_id para lookup O(1)
+        const piMap = {};
+        (profInfos || []).forEach(pi => { piMap[pi.usuario_id] = pi; });
 
-        const cTotal = {};
-        const cMes   = {};
-        const cAno   = {};
+        const now = new Date();
+        const cMes = {};
         (rels || []).forEach(r => {
             const pid = r.professor_id;
             const d = new Date(r.created_at);
-            cTotal[pid] = (cTotal[pid] || 0) + 1;
             if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
                 cMes[pid] = (cMes[pid] || 0) + 1;
-            }
-            if (d.getFullYear() === now.getFullYear()) {
-                cAno[pid] = (cAno[pid] || 0) + 1;
             }
         });
 
         this._todosProfs = profs.map(p => ({
             ...p,
-            total:     cTotal[p.id] || 0,
-            mes:       cMes[p.id]   || 0,
-            ano:       cAno[p.id]   || 0,
-            materia:   p.professores_info?.[0]?.materia   || '—',
-            chave_pix: p.professores_info?.[0]?.chave_pix || '—'
+            total:     piMap[p.id]?.saldo_aulas_dadas || 0,
+            mes:       (cMes[p.id] || 0) + _ajusteMes(piMap[p.id], now),
+            materia:   piMap[p.id]?.materia   || '—',
+            chave_pix: piMap[p.id]?.chave_pix || '—'
         }));
 
         this._renderTabela(this._todosProfs, now);
@@ -218,7 +217,6 @@ Modules.Professores = {
         }
 
         const mesLabel = now.toLocaleDateString('pt-BR', { month: 'short' });
-        const anoLabel = String(now.getFullYear());
 
         wrap.innerHTML = `
             <div class="table-responsive">
@@ -229,7 +227,6 @@ Modules.Professores = {
                             <th>Matéria</th>
                             <th>Chave PIX</th>
                             <th>${mesLabel}</th>
-                            <th>${anoLabel}</th>
                             <th>Total</th>
                             <th></th>
                         </tr>
@@ -254,7 +251,6 @@ Modules.Professores = {
                                     }
                                 </td>
                                 <td><span class="metric-mes">${p.mes}</span></td>
-                                <td><span class="metric-ano">${p.ano}</span></td>
                                 <td><span class="metric-total">${p.total}</span></td>
                                 <td>
                                     <button class="btn btn-ghost btn-sm"
@@ -289,11 +285,10 @@ Modules.Professores = {
         // Em mobile, faz scroll até o calendário
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-        const { data } = await supabase
-            .from('relatorios')
-            .select('created_at')
-            .eq('professor_id', profId)
-            .order('created_at', { ascending: false });
+        const [{ data }, { data: pi }] = await Promise.all([
+            supabase.from('relatorios').select('created_at').eq('professor_id', profId).order('created_at', { ascending: false }),
+            supabase.from('professores_info').select('saldo_aulas_dadas, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', profId).single()
+        ]);
 
         this._profId     = profId;
         this._profNome   = profNome;
@@ -301,15 +296,17 @@ Modules.Professores = {
 
         const now = new Date();
         this._mesAtual = { year: now.getFullYear(), month: now.getMonth() };
+        this._profInfo  = pi;
+
+        const totalReal = pi?.saldo_aulas_dadas || 0;
 
         if (statsEl) {
-            const anoCount = this._contagemAno(now.getFullYear());
-            const mesCount = this._contagemMes(now.getFullYear(), now.getMonth());
+            const mesCount = this._contagemMes(now.getFullYear(), now.getMonth()) + _ajusteMes(pi, now);
             const mesLabel = now.toLocaleDateString('pt-BR', { month: 'long' });
-            statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${anoCount} em ${now.getFullYear()}  ·  ${this._relatorios.length} no total`;
+            statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${totalReal} no total`;
         }
 
-        const totalGanho = this._relatorios.length * 20;
+        const totalGanho = totalReal * 20;
         const ganhoEl = document.getElementById('prof-admin-ganho');
         if (ganhoEl) {
             ganhoEl.textContent = fmt.currency(totalGanho) + ' total';
@@ -323,8 +320,7 @@ Modules.Professores = {
         const chartTotal = document.getElementById('prof-chart-total');
         if (chartCard) {
             chartCard.style.display = 'block';
-            const anoCount = this._contagemAno(now.getFullYear());
-            if (chartTotal) chartTotal.textContent = 'Total ' + now.getFullYear() + ': ' + fmt.currency(anoCount * 20);
+            if (chartTotal) chartTotal.textContent = fmt.currency(totalReal * 20) + ' total';
             this._renderChart('prof-ganhos-chart-admin', now.getFullYear());
         }
     },
@@ -340,10 +336,10 @@ Modules.Professores = {
 
         const statsEl = document.getElementById('prof-cal-stats');
         if (statsEl) {
-            const mesCount = this._contagemMes(year, month);
-            const anoCount = this._contagemAno(year);
-            const mesLabel = new Date(year, month, 1).toLocaleDateString('pt-BR', { month: 'long' });
-            statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${anoCount} em ${year}  ·  ${this._relatorios.length} no total`;
+            const navDate  = new Date(year, month, 1);
+            const mesCount = this._contagemMes(year, month) + _ajusteMes(this._profInfo, navDate);
+            const mesLabel = navDate.toLocaleDateString('pt-BR', { month: 'long' });
+            statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${this._profInfo?.saldo_aulas_dadas || this._relatorios.length} no total`;
         }
 
         this._renderCalendario('prof-cal-wrap');
@@ -412,7 +408,6 @@ Modules.Professores = {
         }
 
         const mesCount = this._contagemMes(year, month);
-        const anoCount = this._contagemAno(year);
 
         wrap.innerHTML = `
             <div class="pcal">
@@ -420,7 +415,7 @@ Modules.Professores = {
                     <button class="pcal-nav-btn" onclick="Modules.Professores._navMes(-1)">&#8249;</button>
                     <div class="pcal-nav-center">
                         <span class="pcal-titulo">${MESES[month]} ${year}</span>
-                        <span class="pcal-subtotais">${mesCount} aulas · ${anoCount} no ano</span>
+                        <span class="pcal-subtotais">${mesCount} aulas</span>
                     </div>
                     <button class="pcal-nav-btn" onclick="Modules.Professores._navMes(1)">&#8250;</button>
                 </div>

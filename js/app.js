@@ -113,18 +113,29 @@ function setActiveSidebarItem(id) {
 // REGISTRAR ROTAS
 // ============================================================
 function registerRoutes() {
-    Router.register('dashboard',       Modules.Dashboard.render.bind(Modules.Dashboard));
-    Router.register('usuarios',        Modules.Usuarios.render.bind(Modules.Usuarios));
-    Router.register('alunos',          Modules.Alunos.render.bind(Modules.Alunos));
-    Router.register('agenda',          Modules.Agenda.render.bind(Modules.Agenda));
-    Router.register('relatorios',      Modules.Relatorios.render.bind(Modules.Relatorios));
-    Router.register('cronograma',      Modules.Cronograma.render.bind(Modules.Cronograma));
-    Router.register('atividades',      Modules.Atividades.render.bind(Modules.Atividades));
-    Router.register('financeiro',      Modules.Financeiro.render.bind(Modules.Financeiro));
-    Router.register('disponibilidade', Modules.Disponibilidade.render.bind(Modules.Disponibilidade));
-    Router.register('professores',     Modules.Professores.render.bind(Modules.Professores));
-    Router.register('auditoria',       Modules.Auditoria.render.bind(Modules.Auditoria));
-    Router.register('psicopedagogia',  Modules.Psicopedagogia.render.bind(Modules.Psicopedagogia));
+    const missing = [];
+    const reg = (route, mod) => {
+        if (!mod) { missing.push(route); return; }
+        Router.register(route, mod.render.bind(mod));
+    };
+
+    reg('dashboard',       Modules.Dashboard);
+    reg('usuarios',        Modules.Usuarios);
+    reg('alunos',          Modules.Alunos);
+    reg('agenda',          Modules.Agenda);
+    reg('relatorios',      Modules.Relatorios);
+    reg('cronograma',      Modules.Cronograma);
+    reg('atividades',      Modules.Atividades);
+    reg('financeiro',      Modules.Financeiro);
+    reg('disponibilidade', Modules.Disponibilidade);
+    reg('professores',     Modules.Professores);
+    reg('auditoria',       Modules.Auditoria);
+    reg('psicopedagogia',  Modules.Psicopedagogia);
+
+    if (missing.length) {
+        console.warn('Módulos não carregados:', missing.join(', '), '— recarregue a página.');
+        showToast('Erro ao carregar módulos. Recarregue a página (F5).', 'error', 8000);
+    }
 }
 
 // ============================================================

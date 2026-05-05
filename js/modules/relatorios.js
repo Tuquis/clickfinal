@@ -401,6 +401,16 @@ Modules.Relatorios = {
 
             if (ins.error) throw ins.error;
 
+            // Incrementar saldo_aulas_dadas do professor em professores_info
+            const piRes = await supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', AppState.userProfile.id).single();
+            await supabase.from('professores_info').update({ saldo_aulas_dadas: (piRes.data?.saldo_aulas_dadas || 0) + 1 }).eq('usuario_id', AppState.userProfile.id);
+
+            // Decrementar aulas disponíveis do aluno
+            const aiRes = await supabase.from('alunos_info').select('aulas_disponiveis').eq('usuario_id', alunoId).single();
+            if ((aiRes.data?.aulas_disponiveis || 0) > 0) {
+                await supabase.from('alunos_info').update({ aulas_disponiveis: aiRes.data.aulas_disponiveis - 1 }).eq('usuario_id', alunoId);
+            }
+
             showToast('Relatório salvo! Saldo do aluno decrementado.', 'success', 4000);
             closeModal('modal-validar-aula');
             await this._loadList();
