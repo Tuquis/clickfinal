@@ -20,14 +20,23 @@ Modules.Dashboard = {
             .select('*')
             .single();
 
-        const { data: proximasAulas } = await supabase
+        const { data: proximasAulasRaw } = await supabase
             .from('v_agenda_completa')
             .select('*')
             .gte('data', todayISO())
             .eq('status', 'agendada')
             .order('data', { ascending: true })
             .order('horario', { ascending: true })
-            .limit(5);
+            .limit(10);
+
+        const _now = new Date();
+        const proximasAulas = (proximasAulasRaw || []).filter(a => {
+            if (a.data !== todayISO()) return true;
+            const [h, m] = (a.horario || '00:00').split(':').map(Number);
+            const expiry = new Date(_now);
+            expiry.setHours(h, m + 90, 0, 0);
+            return expiry >= _now;
+        }).slice(0, 5);
 
         const { data: cobrancasAtrasadas } = await supabase
             .from('v_financeiro_completo')

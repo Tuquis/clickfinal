@@ -198,12 +198,12 @@ Modules.Relatorios = {
                     onchange="Modules.Relatorios._onAlunoSelect(this.value)">
                     <option value="">— selecione o aluno —</option>
                     ${alunos.map(function(a) {
+                        var semSaldo = (a.aulas_disponiveis || 0) <= 0;
                         return '<option value="' + a.id + '"' +
-                            (a.aulas_disponiveis <= 0 ? ' style="color:#dc2626"' : '') + '>' +
+                            (semSaldo ? ' disabled style="color:#bbb"' : '') + '>' +
                             escapeHtml(a.nome) +
                             (a.serie ? ' · ' + escapeHtml(a.serie) : '') +
                             (a.disciplina ? ' · ' + escapeHtml(a.disciplina) : '') +
-                            ' (saldo: ' + (a.aulas_disponiveis || 0) + ')' +
                         '</option>';
                     }).join('')}
                 </select>
@@ -568,6 +568,9 @@ Modules.Relatorios = {
             var habAcad      = r.habilidades?.academicas?.join(', ')      || 'Nenhuma';
             var habSocio     = r.habilidades?.socioemocionais?.join(', ') || 'Nenhuma';
 
+            // NFC normaliza caracteres compostos (ã, ç, é) para jsPDF renderizar corretamente
+            var nfc = s => s ? String(s).normalize('NFC') : '';
+
             var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
             // ── LOGO ─────────────────────────────────────────────────
@@ -583,14 +586,14 @@ Modules.Relatorios = {
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(20);
             doc.setFont('helvetica', 'bold');
-            doc.text('CLICK DO SABER', 105, 15, { align: 'center' });
+            doc.text(nfc('CLICK DO SABER'), 105, 15, { align: 'center' });
 
             doc.setFontSize(11);
             doc.setFont('helvetica', 'normal');
-            doc.text('Relatório Pedagógico Individual', 105, 23, { align: 'center' });
+            doc.text(nfc('Relatório Pedagógico Individual'), 105, 23, { align: 'center' });
 
             doc.setFontSize(9);
-            doc.text('Gerado em ' + new Date().toLocaleDateString('pt-BR'), 105, 30, { align: 'center' });
+            doc.text(nfc('Gerado em ' + new Date().toLocaleDateString('pt-BR')), 105, 30, { align: 'center' });
 
             // ── CARD DO ALUNO ─────────────────────────────────────────
             doc.setFillColor(245, 245, 245);
@@ -600,14 +603,14 @@ Modules.Relatorios = {
             doc.setFontSize(11);
 
             doc.setFont('helvetica', 'bold');
-            doc.text('Aluno:', 15, 50);
+            doc.text(nfc('Aluno:'), 15, 50);
             doc.setFont('helvetica', 'normal');
-            doc.text(alunoNome, 35, 50);
+            doc.text(nfc(alunoNome), 35, 50);
 
             doc.setFont('helvetica', 'bold');
-            doc.text('Professor:', 120, 50);
+            doc.text(nfc('Professor:'), 120, 50);
             doc.setFont('helvetica', 'normal');
-            doc.text(profNome, 145, 50);
+            doc.text(nfc(profNome), 145, 50);
 
             // ── TABELA ────────────────────────────────────────────────
             doc.autoTable({
@@ -620,13 +623,13 @@ Modules.Relatorios = {
                     { header: 'Descrição',  dataKey: 'detalhe' }
                 ],
                 body: [
-                    { item: 'Data',                      detalhe: new Date(r.created_at).toLocaleDateString('pt-BR') },
-                    { item: 'Conteúdo Trabalhado',        detalhe: r.conteudo_ministrado || '—' },
-                    { item: 'Comportamento',              detalhe: r.comportamento       || '—' },
-                    { item: 'Compreensão',                detalhe: r.compreensao         || '—' },
-                    { item: 'Habilidades Acadêmicas',     detalhe: habAcad },
-                    { item: 'Habilidades Socioemocionais',detalhe: habSocio },
-                    { item: 'Recomendações',              detalhe: r.recomendacoes       || 'Nenhuma' }
+                    { item: nfc('Data'),                       detalhe: nfc(new Date(r.created_at).toLocaleDateString('pt-BR')) },
+                    { item: nfc('Conteúdo Trabalhado'),        detalhe: nfc(r.conteudo_ministrado || '—') },
+                    { item: nfc('Comportamento'),              detalhe: nfc(r.comportamento       || '—') },
+                    { item: nfc('Compreensão'),                detalhe: nfc(r.compreensao         || '—') },
+                    { item: nfc('Habilidades Acadêmicas'),     detalhe: nfc(habAcad) },
+                    { item: nfc('Habilidades Socioemocionais'),detalhe: nfc(habSocio) },
+                    { item: nfc('Recomendações'),              detalhe: nfc(r.recomendacoes       || 'Nenhuma') }
                 ],
                 columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
             });
@@ -637,9 +640,10 @@ Modules.Relatorios = {
             doc.line(10, pageHeight - 20, 200, pageHeight - 20);
             doc.setFontSize(9);
             doc.setTextColor(120);
-            doc.text('Click do Saber - Plataforma de Acompanhamento Pedagógico', 105, pageHeight - 12, { align: 'center' });
+            doc.text(nfc('Click do Saber - Plataforma de Acompanhamento Pedagógico'), 105, pageHeight - 12, { align: 'center' });
 
-            doc.save('relatorio-' + id.substring(0, 8) + '.pdf');
+            var nomeArquivo = alunoNome.normalize('NFC').replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim().replace(/\s+/g, '-').toLowerCase();
+            doc.save('relatorio-' + (nomeArquivo || id.substring(0, 8)) + '.pdf');
             showToast('PDF exportado', 'success');
         } catch(err) {
             showToast('Erro: ' + err.message, 'error');
