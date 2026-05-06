@@ -142,8 +142,8 @@ Modules.Relatorios = {
                             <td>${fmt.date(r.created_at.substring(0, 10))}</td>
                             <td>${escapeHtml((r.aluno && r.aluno.nome) || '—')}</td>
                             ${!Auth.can('aluno') ? '<td>' + escapeHtml((r.professor && r.professor.nome) || '—') + '</td>' : ''}
-                            <td>${badge(r.comportamento, Modules.Relatorios._badgeComp(r.comportamento))}</td>
-                            <td>${badge(r.compreensao,   Modules.Relatorios._badgeComp(r.compreensao))}</td>
+                            <td>${badge(Modules.Relatorios._COMP_SHORT[r.comportamento]  || r.comportamento, Modules.Relatorios._badgeComp(r.comportamento))}</td>
+                            <td>${badge(Modules.Relatorios._COMPR_SHORT[r.compreensao]   || r.compreensao,  Modules.Relatorios._badgeComp(r.compreensao))}</td>
                             <td>
                                 <div class="action-btns">
                                     <button class="btn btn-ghost btn-sm"
@@ -165,10 +165,45 @@ Modules.Relatorios = {
         Modules.Relatorios._loadList();
     },
 
+    _COMP_LABELS: {
+        excelente: 'Participou ativamente e demonstrou interesse',
+        bom:       'Participou com engajamento moderado',
+        regular:   'Precisou de estímulo para se concentrar',
+        ruim:      'Mostrou desânimo ou distração'
+    },
+    _COMPR_LABELS: {
+        excelente: 'Compreendeu e aplicou com autonomia',
+        boa:       'Compreendeu com apoio, com pequenas dúvidas',
+        regular:   'Compreendeu parcialmente, precisa de reforço',
+        baixa:     'Baixa compreensão'
+    },
+    _COMP_SHORT: {
+        excelente: 'Ativo e interessado',
+        bom:       'Engajamento moderado',
+        regular:   'Precisou de estímulo',
+        ruim:      'Desânimo/distração'
+    },
+    _COMPR_SHORT: {
+        excelente: 'Autônomo',
+        boa:       'Com apoio',
+        regular:   'Com reforço',
+        baixa:     'Com reforço'
+    },
+    _HAB_LABELS: {
+        escrita:     'Escrita e ortografia',
+        leitura:     'Leitura e interpretação de texto',
+        raciocinio:  'Raciocínio lógico / cálculo',
+        organizacao: 'Organização e método de estudo'
+    },
+    _SOCIO_LABELS: {
+        atencao:      'Atenção e foco',
+        autoconfianca:'Autoconfiança',
+        comunicacao:  'Comunicação e expressão'
+    },
     _badgeComp: function(v) {
-        var m = { excelente:'badge-success', bom:'badge-info', boa:'badge-info',
-                  regular:'badge-warning',   ruim:'badge-danger', baixa:'badge-danger' };
-        return m[v] || 'badge-secondary';
+        if (v === 'excelente') return 'badge-success';
+        if (v === 'bom' || v === 'boa') return 'badge-info';
+        return 'badge-secondary';
     },
 
     // ── ABRIR MODAL VALIDAR AULA ──────────────────────────────────
@@ -225,21 +260,21 @@ Modules.Relatorios = {
                 <!-- 2. COMPORTAMENTO -->
                 <div class="rel-section">
                     <div class="rel-section-title">🎓 Comportamento do aluno</div>
-                    <div class="check-grid">
-                        <label class="check-item">
-                            <input type="checkbox" value="participou" class="comp-check" />
-                            Participou ativamente das atividades
+                    <div class="radio-list">
+                        <label class="radio-item">
+                            <input type="radio" name="rel-comportamento" value="excelente" />
+                            Participou ativamente e demonstrou interesse
                         </label>
-                        <label class="check-item">
-                            <input type="checkbox" value="interesse" class="comp-check" />
-                            Demonstrou interesse e curiosidade
+                        <label class="radio-item">
+                            <input type="radio" name="rel-comportamento" value="bom" />
+                            Participou com engajamento moderado
                         </label>
-                        <label class="check-item">
-                            <input type="checkbox" value="estimulo" class="comp-check" />
+                        <label class="radio-item">
+                            <input type="radio" name="rel-comportamento" value="regular" />
                             Precisou de estímulo para se concentrar
                         </label>
-                        <label class="check-item">
-                            <input type="checkbox" value="desanimo" class="comp-check" />
+                        <label class="radio-item">
+                            <input type="radio" name="rel-comportamento" value="ruim" />
                             Mostrou desânimo ou distração
                         </label>
                     </div>
@@ -357,14 +392,6 @@ Modules.Relatorios = {
         });
     },
 
-    _deriveComportamento: function(comp) {
-        if (comp.includes('desanimo'))   return 'ruim';
-        if (comp.includes('estimulo'))   return 'regular';
-        if (comp.includes('participou') && comp.includes('interesse')) return 'excelente';
-        if (comp.includes('participou') || comp.includes('interesse')) return 'bom';
-        return 'regular';
-    },
-
     async salvar() {
         var alunoId     = document.getElementById('rel-aluno-id').value;
         var conteudo    = document.getElementById('rel-conteudo')
@@ -374,14 +401,16 @@ Modules.Relatorios = {
         var recomEl     = document.getElementById('rel-recomendacoes');
         var recomendacoes = recomEl ? recomEl.value.trim() : '';
 
-        if (!alunoId)     return showToast('Selecione o aluno', 'error');
-        if (!conteudo)    return showToast('Informe o conteúdo ministrado', 'error');
-        if (!compreensao) return showToast('Selecione o nível de compreensão', 'error');
+        var comportEl   = document.querySelector('input[name="rel-comportamento"]:checked');
+        var comportamento = comportEl ? comportEl.value : null;
 
-        var comportamentos  = this._getChecked('comp-check');
+        if (!alunoId)      return showToast('Selecione o aluno', 'error');
+        if (!conteudo)     return showToast('Informe o conteúdo ministrado', 'error');
+        if (!comportamento)return showToast('Selecione o comportamento do aluno', 'error');
+        if (!compreensao)  return showToast('Selecione o nível de compreensão', 'error');
+
         var academicas      = this._getChecked('hab-check');
         var socioemocionais = this._getChecked('socio-check');
-        var comportamento   = this._deriveComportamento(comportamentos);
 
         setLoading('#btn-salvar-relatorio', true);
         try {
@@ -393,7 +422,6 @@ Modules.Relatorios = {
                 compreensao:         compreensao,
                 recomendacoes:       recomendacoes || null,
                 habilidades: {
-                    comportamentos:  comportamentos,
                     academicas:      academicas,
                     socioemocionais: socioemocionais
                 }
@@ -446,30 +474,6 @@ Modules.Relatorios = {
         var acad  = hab.academicas      || [];
         var socio = hab.socioemocionais || [];
 
-        var COMP_LABELS = {
-            participou:  'Participou ativamente das atividades',
-            interesse:   'Demonstrou interesse e curiosidade',
-            estimulo:    'Precisou de estímulo para se concentrar',
-            desanimo:    'Mostrou desânimo ou distração'
-        };
-        var HAB_LABELS = {
-            escrita:     'Escrita e ortografia',
-            leitura:     'Leitura e interpretação de texto',
-            raciocinio:  'Raciocínio lógico / cálculo',
-            organizacao: 'Organização e método de estudo'
-        };
-        var SOCIO_LABELS = {
-            atencao:      'Atenção e foco',
-            autoconfianca:'Autoconfiança',
-            comunicacao:  'Comunicação e expressão'
-        };
-        var COMP_MAP = {
-            excelente: 'Compreendeu e aplicou com autonomia',
-            boa:       'Compreendeu com apoio, com pequenas dúvidas',
-            regular:   'Compreendeu parcialmente, precisa de reforço',
-            baixa:     'Baixa compreensão'
-        };
-
         body.innerHTML = `
             <div id="rel-pdf-${id}" class="rel-view">
                 <div class="rel-view-topo">
@@ -496,21 +500,22 @@ Modules.Relatorios = {
                     <p>${escapeHtml(r.conteudo_ministrado)}</p>
                 </div>
 
-                ${comps.length ? `
                 <div class="rel-bloco">
                     <div class="rel-bloco-titulo">🎓 Comportamento</div>
-                    <ul class="rel-list">
-                        ${comps.map(function(c) {
-                            return '<li>' + escapeHtml(COMP_LABELS[c] || c) + '</li>';
-                        }).join('')}
-                    </ul>
-                </div>` : ''}
+                    ${comps.length
+                        ? `<ul class="rel-list">${comps.map(function(c) {
+                              var legado = {participou:'Participou ativamente das atividades',interesse:'Demonstrou interesse e curiosidade',estimulo:'Precisou de estímulo para se concentrar',desanimo:'Mostrou desânimo ou distração'};
+                              return '<li>' + escapeHtml(legado[c] || c) + '</li>';
+                          }).join('')}</ul>`
+                        : `<p>${escapeHtml(Modules.Relatorios._COMP_LABELS[r.comportamento] || r.comportamento || '—')}</p>`
+                    }
+                </div>
 
                 <div class="rel-bloco">
                     <div class="rel-bloco-titulo">🧠 Nível de compreensão</div>
                     <p>
-                        ${badge(r.compreensao, Modules.Relatorios._badgeComp(r.compreensao))}
-                        &nbsp;${escapeHtml(COMP_MAP[r.compreensao] || r.compreensao)}
+                        ${badge(Modules.Relatorios._COMPR_SHORT[r.compreensao] || r.compreensao, Modules.Relatorios._badgeComp(r.compreensao))}
+                        &nbsp;${escapeHtml(Modules.Relatorios._COMPR_LABELS[r.compreensao] || r.compreensao || '—')}
                     </p>
                 </div>
 
@@ -521,14 +526,14 @@ Modules.Relatorios = {
                         <p class="rel-sub-title">Acadêmicas</p>
                         <ul class="rel-list">
                             ${acad.map(function(h) {
-                                return '<li>' + escapeHtml(HAB_LABELS[h] || h) + '</li>';
+                                return '<li>' + escapeHtml(Modules.Relatorios._HAB_LABELS[h] || h) + '</li>';
                             }).join('')}
                         </ul>` : ''}
                     ${socio.length ? `
                         <p class="rel-sub-title" style="margin-top:8px">Socioemocionais</p>
                         <ul class="rel-list">
                             ${socio.map(function(h) {
-                                return '<li>' + escapeHtml(SOCIO_LABELS[h] || h) + '</li>';
+                                return '<li>' + escapeHtml(Modules.Relatorios._SOCIO_LABELS[h] || h) + '</li>';
                             }).join('')}
                         </ul>` : ''}
                 </div>` : ''}
@@ -565,8 +570,10 @@ Modules.Relatorios = {
 
             var alunoNome    = (r.aluno && r.aluno.nome) || '—';
             var profNome     = (r.professor && r.professor.nome) || '—';
-            var habAcad      = r.habilidades?.academicas?.join(', ')      || 'Nenhuma';
-            var habSocio     = r.habilidades?.socioemocionais?.join(', ') || 'Nenhuma';
+            var habAcad  = (r.habilidades?.academicas || [])
+                .map(function(k) { return Modules.Relatorios._HAB_LABELS[k] || k; }).join(', ') || 'Nenhuma';
+            var habSocio = (r.habilidades?.socioemocionais || [])
+                .map(function(k) { return Modules.Relatorios._SOCIO_LABELS[k] || k; }).join(', ') || 'Nenhuma';
 
             // NFC normaliza caracteres compostos (ã, ç, é) para jsPDF renderizar corretamente
             var nfc = s => s ? String(s).normalize('NFC') : '';
@@ -625,8 +632,8 @@ Modules.Relatorios = {
                 body: [
                     { item: nfc('Data'),                       detalhe: nfc(new Date(r.created_at).toLocaleDateString('pt-BR')) },
                     { item: nfc('Conteúdo Trabalhado'),        detalhe: nfc(r.conteudo_ministrado || '—') },
-                    { item: nfc('Comportamento'),              detalhe: nfc(r.comportamento       || '—') },
-                    { item: nfc('Compreensão'),                detalhe: nfc(r.compreensao         || '—') },
+                    { item: nfc('Comportamento'), detalhe: nfc(Modules.Relatorios._COMP_LABELS[r.comportamento]  || r.comportamento  || '—') },
+                    { item: nfc('Compreensão'),  detalhe: nfc(Modules.Relatorios._COMPR_LABELS[r.compreensao]   || r.compreensao    || '—') },
                     { item: nfc('Habilidades Acadêmicas'),     detalhe: nfc(habAcad) },
                     { item: nfc('Habilidades Socioemocionais'),detalhe: nfc(habSocio) },
                     { item: nfc('Recomendações'),              detalhe: nfc(r.recomendacoes       || 'Nenhuma') }
