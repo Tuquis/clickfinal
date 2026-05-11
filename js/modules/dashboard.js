@@ -170,6 +170,9 @@ Modules.Dashboard = {
                 </div>
             </div>
         `);
+
+        // Mostra novidade do chat uma única vez
+        Modules.Dashboard._mostrarNovidade('professor');
     },
 
     async _lancarAula(alunoId) {
@@ -225,6 +228,9 @@ Modules.Dashboard = {
                 </div>
             </div>
         `);
+
+        // Mostra novidade do chat uma única vez
+        Modules.Dashboard._mostrarNovidade('aluno');
     },
 
     async _psico() {
@@ -282,6 +288,74 @@ Modules.Dashboard = {
                 </div>
             </div>
         `;
+    },
+
+    // ── Novidade: chat (aparece uma vez por usuário) ───────────
+    _mostrarNovidade(role) {
+        const CHAVE = 'chat_novidade_v1';
+        if (localStorage.getItem(CHAVE)) return;
+
+        const isProf   = role === 'professor';
+        const outro    = isProf ? 'seu aluno' : 'seu professor';
+        const titulo   = isProf
+            ? 'Agora você pode conversar com seu aluno pelo Chat Click!'
+            : 'Agora você pode conversar com seu professor pelo Chat Click!';
+        const rodape   = isProf
+            ? 'Qualquer detalhe sobre a aula pode ser combinado por lá!'
+            : 'Tire dúvidas e combine detalhes da aula direto com seu professor!';
+
+        // Injeta o modal se ainda não existe no DOM
+        if (!document.getElementById('modal-novidade-chat')) {
+            const el = document.createElement('div');
+            el.innerHTML = `
+                <div class="modal-overlay modal-novidade-overlay" id="modal-novidade-chat">
+                    <div class="novidade-box">
+                        <button class="novidade-close" onclick="Modules.Dashboard._fecharNovidade()" aria-label="Fechar">×</button>
+
+                        <div class="novidade-icone">💬</div>
+
+                        <div class="novidade-badge">Novidade</div>
+
+                        <h2 class="novidade-titulo">${titulo}</h2>
+
+                        <p class="novidade-desc">
+                            Tire dúvidas, combine detalhes da aula e envie arquivos
+                            diretamente pela plataforma — sem precisar sair daqui.
+                        </p>
+
+                        <ol class="novidade-steps">
+                            <li>Vá em <strong>Minhas Aulas</strong> na agenda</li>
+                            <li>Clique em uma aula agendada</li>
+                            <li>Toque no botão <strong>💬</strong> e pronto!</li>
+                        </ol>
+
+                        <p class="novidade-rodape">${rodape}</p>
+
+                        <button class="btn btn-primary novidade-btn-ok"
+                            onclick="Modules.Dashboard._fecharNovidade()">
+                            Entendido, vamos lá!
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(el.firstElementChild);
+        }
+
+        // Pequeno delay para garantir que o renderContent terminou
+        setTimeout(() => {
+            const modal = document.getElementById('modal-novidade-chat');
+            if (modal) modal.classList.add('modal-open');
+            document.body.style.overflow = 'hidden';
+        }, 300);
+    },
+
+    _fecharNovidade() {
+        localStorage.setItem('chat_novidade_v1', '1');
+        const modal = document.getElementById('modal-novidade-chat');
+        if (modal) {
+            modal.classList.remove('modal-open');
+            document.body.style.overflow = '';
+        }
     },
 
     // ── Mensagens não lidas ────────────────────────────────────
