@@ -32,17 +32,18 @@ SELECT
     a.status,
     a.created_at,
     al.nome AS aluno_nome,
-    al.id AS aluno_id,
+    al.id   AS aluno_id,
     pr.nome AS professor_nome,
-    pr.id AS professor_id,
+    pr.id   AS professor_id,
     ai.serie,
     ai.disciplina,
-    r.id AS relatorio_id
+    r.id    AS relatorio_id,
+    a.lembrete_enviado
 FROM public.agenda_meet a
 JOIN public.usuarios al ON al.id = a.aluno_id
 JOIN public.usuarios pr ON pr.id = a.professor_id
 LEFT JOIN public.alunos_info ai ON ai.usuario_id = a.aluno_id
-LEFT JOIN public.relatorios r ON r.agenda_id = a.id;
+LEFT JOIN public.relatorios   r  ON r.agenda_id  = a.id;
 
 -- ============================================================
 -- VIEW: alunos com info completa

@@ -77,7 +77,8 @@ var CATEGORIAS_PSICO = {
 window.EMAILJS_CONFIG = {
     publicKey:  'jclQiDLL5puzfQEFr',
     serviceId:  'service_c6lui2h',
-    templateId: 'template_du9xhya'
+    templateId: 'template_du9xhya'   // confirmação de agendamento (frontend)
+    // lembrete 30 min antes: gerenciado pela Edge Function no servidor
 };
 
 // Namespace de módulos — deve existir antes dos arquivos de módulo carregarem
