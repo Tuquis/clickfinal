@@ -115,10 +115,11 @@ Modules.Dashboard = {
     async _professor() {
         const id = AppState.userProfile.id;
 
-        const [{ data: hoje }, { data: semana }, { data: profInfo }] = await Promise.all([
+        const [{ data: hoje }, { data: semana }, { data: profInfo }, notificacoes] = await Promise.all([
             supabase.from('v_agenda_completa').select('*').eq('professor_id', id).eq('data', todayISO()).order('horario'),
             supabase.from('v_agenda_completa').select('*').eq('professor_id', id).gte('data', todayISO()).eq('status', 'agendada').order('data').limit(10),
-            supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', id).single()
+            supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', id).single(),
+            Modules.Dashboard._fetchMensagensNaoLidas(id)
         ]);
 
         const now = new Date();
@@ -128,6 +129,9 @@ Modules.Dashboard = {
                 <h1 class="page-title">Bem-vindo, ${escapeHtml(AppState.userProfile.nome.split(' ')[0])}</h1>
                 <button class="btn btn-primary" onclick="Modules.Dashboard._lancarAula()">✓ Lançar Aula</button>
             </div>
+
+            ${Modules.Dashboard._notificacoesHtml(notificacoes)}
+
             <div class="stats-grid stats-grid-3">
                 ${Modules.Dashboard._statCard('Aulas Hoje', hoje?.length || 0, '📅', 'stat-blue')}
                 ${Modules.Dashboard._statCard('Próximas Aulas', semana?.length || 0, '📆', 'stat-purple')}
@@ -176,16 +180,20 @@ Modules.Dashboard = {
     async _aluno() {
         const id = AppState.userProfile.id;
 
-        const [{ data: alunoInfo }, { data: proximasAulas }, { data: tarefas }] = await Promise.all([
+        const [{ data: alunoInfo }, { data: proximasAulas }, { data: tarefas }, notificacoes] = await Promise.all([
             supabase.from('alunos_info').select('*').eq('usuario_id', id).single(),
             supabase.from('v_agenda_completa').select('*').eq('aluno_id', id).gte('data', todayISO()).eq('status', 'agendada').order('data').order('horario').limit(5),
-            supabase.from('cronograma_tarefas').select('*, cronograma!inner(aluno_id)').eq('cronograma.aluno_id', id).eq('status', 'pendente').limit(5)
+            supabase.from('cronograma_tarefas').select('*, cronograma!inner(aluno_id)').eq('cronograma.aluno_id', id).eq('status', 'pendente').limit(5),
+            Modules.Dashboard._fetchMensagensNaoLidas(id)
         ]);
 
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Olá, ${escapeHtml(AppState.userProfile.nome.split(' ')[0])}</h1>
             </div>
+
+            ${Modules.Dashboard._notificacoesHtml(notificacoes)}
+
             <div class="stats-grid stats-grid-2">
                 ${Modules.Dashboard._statCard('Aulas Disponíveis', alunoInfo?.aulas_disponiveis || 0, '🎓', 'stat-blue')}
                 ${Modules.Dashboard._statCard('Tarefas Pendentes', tarefas?.length || 0, '📋', 'stat-purple')}
@@ -271,6 +279,89 @@ Modules.Dashboard = {
                 <div class="stat-body">
                     <div class="stat-value">${escapeHtml(String(value))}</div>
                     <div class="stat-label">${escapeHtml(label)}</div>
+                </div>
+            </div>
+        `;
+    },
+
+    // ── Mensagens não lidas ────────────────────────────────────
+    async _fetchMensagensNaoLidas(uid) {
+        const { data: msgs, error } = await supabase
+            .from('mensagens')
+            .select('id, agenda_id, remetente_id, conteudo, created_at')
+            .eq('lida', false)
+            .neq('remetente_id', uid)
+            .order('created_at', { ascending: false })
+            .limit(30);
+
+        if (error || !msgs || msgs.length === 0) return [];
+
+        // Agrupa por agenda_id
+        const grupos = {};
+        msgs.forEach(m => {
+            if (!grupos[m.agenda_id]) grupos[m.agenda_id] = [];
+            grupos[m.agenda_id].push(m);
+        });
+
+        const agendaIds = Object.keys(grupos);
+
+        const { data: aulas } = await supabase
+            .from('v_agenda_completa')
+            .select('id, aluno_id, aluno_nome, professor_id, professor_nome, data, horario, disciplina')
+            .in('id', agendaIds);
+
+        return agendaIds.map(aid => {
+            const aula       = (aulas || []).find(a => a.id === aid);
+            const grupo      = grupos[aid];
+            const ultima     = grupo[0];
+            const remetenteNome = aula
+                ? (ultima.remetente_id === aula.professor_id ? aula.professor_nome : aula.aluno_nome)
+                : '—';
+            return { agendaId: aid, aula, count: grupo.length, ultimaMsg: ultima, remetenteNome };
+        });
+    },
+
+    _notificacoesHtml(notificacoes) {
+        if (!notificacoes || notificacoes.length === 0) return '';
+
+        const itens = notificacoes.map(n => {
+            const aula     = n.aula;
+            const dataFmt  = aula
+                ? new Date(aula.data + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })
+                : '';
+            const horario  = aula ? fmt.time(aula.horario) : '';
+            const disciplina = aula?.disciplina ? escapeHtml(aula.disciplina) + ' · ' : '';
+            const trecho   = escapeHtml((n.ultimaMsg.conteudo || '').substring(0, 80)) + (n.ultimaMsg.conteudo?.length > 80 ? '…' : '');
+
+            return `
+                <div class="notif-msg-item">
+                    <div class="notif-msg-avatar">💬</div>
+                    <div class="notif-msg-body">
+                        <div class="notif-msg-de">
+                            <strong>${escapeHtml(n.remetenteNome)}</strong>
+                            ${n.count > 1 ? `<span class="notif-msg-count">${n.count} novas mensagens</span>` : '<span class="notif-msg-count">1 nova mensagem</span>'}
+                        </div>
+                        <div class="notif-msg-trecho">"${trecho}"</div>
+                        ${aula ? `<div class="notif-msg-aula">${disciplina}${dataFmt} às ${horario}</div>` : ''}
+                    </div>
+                    <button class="btn btn-primary btn-sm notif-msg-btn"
+                        onclick="Modules.Chat.open('${n.agendaId}')">
+                        Ver conversa
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="card notif-msg-card">
+                <div class="card-header notif-msg-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="notif-msg-dot"></span>
+                        <h3>Novas mensagens para você</h3>
+                    </div>
+                </div>
+                <div class="notif-msg-list">
+                    ${itens}
                 </div>
             </div>
         `;

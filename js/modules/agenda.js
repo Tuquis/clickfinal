@@ -390,12 +390,17 @@ Modules.Agenda = {
                                     : lessons.map(a => {
                                         const colorIdx = this._profColor(a.professor_id);
                                         return `
-                                            <div class="cal-event cal-color-${colorIdx}" onclick="Modules.Agenda.viewDetails('${a.id}')">
-                                                <div class="cal-event-time">🕐 ${fmt.time(a.horario)}</div>
-                                                <div class="cal-event-aluno">${escapeHtml(a.aluno_nome)}</div>
-                                                <div class="cal-event-prof">👤 ${escapeHtml(a.professor_nome)}</div>
-                                                <div class="cal-event-subject">${escapeHtml(a.disciplina || '')}${a.disciplina && a.conteudo ? ' · ' : ''}${escapeHtml((a.conteudo||'').substring(0,40))}${(a.conteudo||'').length > 40 ? '…' : ''}</div>
-                                                ${a.link_meet ? `<div class="cal-event-meet">📹 Meet</div>` : ''}
+                                            <div class="cal-event cal-color-${colorIdx}">
+                                                <div onclick="Modules.Agenda.viewDetails('${a.id}')">
+                                                    <div class="cal-event-time">🕐 ${fmt.time(a.horario)}</div>
+                                                    <div class="cal-event-aluno">${escapeHtml(a.aluno_nome)}</div>
+                                                    <div class="cal-event-prof">👤 ${escapeHtml(a.professor_nome)}</div>
+                                                    <div class="cal-event-subject">${escapeHtml(a.disciplina || '')}${a.disciplina && a.conteudo ? ' · ' : ''}${escapeHtml((a.conteudo||'').substring(0,40))}${(a.conteudo||'').length > 40 ? '…' : ''}</div>
+                                                    ${a.link_meet ? `<div class="cal-event-meet">📹 Meet</div>` : ''}
+                                                </div>
+                                                <div class="cal-event-actions">
+                                                    <button class="cal-event-chat-btn" onclick="event.stopPropagation();Modules.Chat.open('${a.id}')" title="Chat com aluno/professor">💬</button>
+                                                </div>
                                             </div>
                                         `;
                                     }).join('')
@@ -506,6 +511,7 @@ Modules.Agenda = {
                                                 <div class="agenda-aula-actions">
                                                     ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-ghost btn-sm">📹 Meet</a>` : ''}
                                                     <button class="btn btn-ghost btn-sm" onclick="Modules.Agenda.viewDetails('${a.id}')">Detalhes</button>
+                                                    <button class="btn btn-ghost btn-sm btn-chat" onclick="Modules.Chat.open('${a.id}')">💬 Chat</button>
                                                     ${a.status === 'agendada' && Auth.can('professor') && a.professor_id === uid && !a.relatorio_id
                                                         ? `<button class="btn btn-sm btn-primary" onclick="Modules.Agenda._abrirRelatorio('${a.aluno_id}')">Relatório</button>`
                                                         : ''}
@@ -585,6 +591,12 @@ Modules.Agenda = {
 
         const footer = document.getElementById('modal-detalhes-footer');
         footer.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('modal-aula-detalhes')">Fechar</button>`;
+
+        // Botão de chat: visível para professor, aluno e admin quando a aula é agendada
+        const podeChat = a.professor_id === uid || a.aluno_id === uid || isAdmin;
+        if (podeChat) {
+            footer.innerHTML += `<button class="btn btn-ghost btn-chat" onclick="closeModal('modal-aula-detalhes');Modules.Chat.open('${a.id}')">💬 Chat</button>`;
+        }
 
         if (a.status === 'agendada' && Auth.can('professor') && a.professor_id === uid && !a.relatorio_id) {
             footer.innerHTML += `<button class="btn btn-primary" onclick="Modules.Agenda._abrirRelatorio('${a.aluno_id}')">Lançar Relatório</button>`;
