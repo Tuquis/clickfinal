@@ -64,6 +64,9 @@
     <!-- Chart.js para gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
+    <!-- EmailJS — envio de email direto do frontend -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
     <!-- ============================================================
          APP SCRIPTS (ordem importa)
     ============================================================ -->
@@ -87,6 +90,11 @@
 
     <!-- Roteador e inicializador principal -->
     <script src="js/app.js"></script>
+
+    <!-- Inicializa EmailJS uma única vez -->
+    <script>
+        emailjs.init({ publicKey: window.EMAILJS_CONFIG.publicKey });
+    </script>
 
     <!-- Clock no topbar -->
     <script>

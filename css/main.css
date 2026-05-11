@@ -1770,3 +1770,466 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
         grid-template-columns: 1fr !important;
     }
 }
+
+/* ============================================================
+   AGENDA — CALENDÁRIO ESTILO GOOGLE CALENDAR
+   ============================================================ */
+
+/* Toggle de visualização */
+.view-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+}
+.view-toggle-btn {
+    padding: 5px 14px;
+    border: none;
+    background: transparent;
+    border-radius: calc(var(--radius-sm) - 2px);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text-2);
+    transition: all var(--transition);
+    font-family: var(--font);
+}
+.view-toggle-btn.active {
+    background: var(--color-surface);
+    color: var(--color-primary);
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    font-weight: 600;
+}
+
+/* Label do período da semana */
+.cal-period {
+    font-weight: 600;
+    font-size: .875rem;
+    color: var(--color-text);
+    white-space: nowrap;
+}
+
+/* Resumo de aulas da semana */
+.cal-summary {
+    margin-bottom: 14px;
+}
+.cal-summary-count {
+    font-size: .8125rem;
+    color: var(--color-text-3);
+    font-weight: 500;
+}
+.cal-summary-empty {
+    font-size: .8125rem;
+    color: var(--color-text-3);
+    font-style: italic;
+}
+
+/* Grade da semana (7 colunas) */
+.cal-week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    align-items: start;
+}
+
+/* Coluna de cada dia */
+.cal-day-col {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color var(--transition);
+}
+.cal-day-col:hover {
+    border-color: var(--color-accent);
+}
+.cal-day-col.cal-has-events {
+    box-shadow: 0 2px 8px rgba(124,58,237,.08);
+}
+
+/* Cabeçalho do dia */
+.cal-day-header {
+    padding: 10px 8px 8px;
+    text-align: center;
+    border-bottom: 1px solid var(--color-border-soft);
+    background: var(--color-surface-2);
+    position: relative;
+}
+.cal-day-name {
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--color-text-3);
+    margin-bottom: 4px;
+}
+.cal-day-num {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1;
+}
+.cal-day-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary);
+    color: white;
+    border-radius: 20px;
+    font-size: .6rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    margin-top: 4px;
+}
+
+/* Hoje — destaque roxo */
+.cal-today .cal-day-header {
+    background: var(--color-primary);
+}
+.cal-today .cal-day-name,
+.cal-today .cal-day-num {
+    color: white;
+}
+.cal-today .cal-day-count {
+    background: rgba(255,255,255,.25);
+    color: white;
+}
+.cal-today {
+    border-color: var(--color-primary);
+    border-width: 2px;
+}
+
+/* Corpo do dia */
+.cal-day-body {
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+}
+.cal-empty-day {
+    color: var(--color-text-3);
+    font-size: .75rem;
+    text-align: center;
+    padding: 16px 0;
+}
+
+/* Botão de adicionar aula */
+.cal-add-btn {
+    width: 100%;
+    padding: 5px;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--color-text-3);
+    cursor: pointer;
+    transition: all var(--transition);
+    font-family: var(--font);
+    margin-top: auto;
+}
+.cal-add-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: var(--color-surface-2);
+}
+
+/* Evento / card de aula no calendário */
+.cal-event {
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    cursor: pointer;
+    transition: opacity var(--transition), transform var(--transition), box-shadow var(--transition);
+    color: white;
+    border-left: 3px solid rgba(0,0,0,.2);
+    position: relative;
+    overflow: hidden;
+}
+.cal-event:hover {
+    opacity: .92;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
+.cal-event-time {
+    font-size: .65rem;
+    font-weight: 700;
+    opacity: .9;
+    margin-bottom: 2px;
+}
+.cal-event-aluno {
+    font-size: .75rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cal-event-prof {
+    font-size: .68rem;
+    opacity: .82;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cal-event-subject {
+    font-size: .65rem;
+    opacity: .75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+.cal-event-meet {
+    font-size: .65rem;
+    font-weight: 600;
+    opacity: .9;
+    margin-top: 3px;
+    background: rgba(255,255,255,.2);
+    border-radius: 3px;
+    padding: 1px 5px;
+    display: inline-block;
+}
+
+/* 8 cores rotativas para professores */
+.cal-color-0 { background: #7c3aed; border-left-color: #5b21b6; }
+.cal-color-1 { background: #2563eb; border-left-color: #1d4ed8; }
+.cal-color-2 { background: #0d9488; border-left-color: #0f766e; }
+.cal-color-3 { background: #ca8a04; border-left-color: #a16207; }
+.cal-color-4 { background: #dc2626; border-left-color: #b91c1c; }
+.cal-color-5 { background: #16a34a; border-left-color: #15803d; }
+.cal-color-6 { background: #9333ea; border-left-color: #7e22ce; }
+.cal-color-7 { background: #0891b2; border-left-color: #0e7490; }
+
+/* ============================================================
+   AGENDA — VISUALIZAÇÃO LISTA (cards agrupados por data)
+   ============================================================ */
+.agenda-list-view {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.agenda-date-group {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.agenda-date-label {
+    min-width: 120px;
+    padding-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-right: 2px solid var(--color-border);
+    padding-right: 16px;
+}
+.agenda-date-label.agenda-date-today {
+    border-right-color: var(--color-primary);
+}
+.agenda-date-dia {
+    font-size: .875rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+.agenda-date-full {
+    font-size: .72rem;
+    color: var(--color-text-3);
+}
+
+.agenda-date-aulas {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Card de cada aula na lista */
+.agenda-aula-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    border-left: 4px solid;
+    transition: box-shadow var(--transition), transform var(--transition);
+}
+.agenda-aula-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateX(2px);
+}
+
+.agenda-aula-time {
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: var(--color-text);
+    min-width: 44px;
+    line-height: 1.2;
+    padding-top: 2px;
+}
+
+.agenda-aula-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.agenda-aula-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.agenda-aula-aluno {
+    font-weight: 700;
+    font-size: .9375rem;
+}
+.agenda-aula-prof {
+    font-size: .8125rem;
+    color: var(--color-text-3);
+}
+.agenda-aula-disc {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--color-text-3);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.agenda-aula-conteudo {
+    font-size: .8125rem;
+    color: var(--color-text-2);
+    cursor: pointer;
+    padding: 5px 8px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--color-border);
+    transition: border-color var(--transition), background var(--transition);
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.agenda-aula-conteudo:hover {
+    border-left-color: var(--color-primary);
+    background: var(--color-purple-bg);
+}
+.conteudo-hint {
+    font-size: .72rem;
+    color: var(--color-primary);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.agenda-aula-actions {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+/* Cores do lado esquerdo por professor */
+.agenda-color-0 { border-left-color: #7c3aed; }
+.agenda-color-1 { border-left-color: #2563eb; }
+.agenda-color-2 { border-left-color: #0d9488; }
+.agenda-color-3 { border-left-color: #ca8a04; }
+.agenda-color-4 { border-left-color: #dc2626; }
+.agenda-color-5 { border-left-color: #16a34a; }
+.agenda-color-6 { border-left-color: #9333ea; }
+.agenda-color-7 { border-left-color: #0891b2; }
+
+/* ============================================================
+   RESPONSIVE — calendário agenda
+   ============================================================ */
+
+/* Wrapper com scroll horizontal — todos os 7 dias sempre visíveis */
+.cal-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /* barra de scroll visível mas discreta */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+}
+.cal-scroll-wrapper::-webkit-scrollbar { height: 5px; }
+.cal-scroll-wrapper::-webkit-scrollbar-track { background: transparent; }
+.cal-scroll-wrapper::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* A grade em si nunca encolhe — cada coluna tem mínimo de 120px */
+.cal-week-grid {
+    min-width: 840px; /* 7 × 120px */
+}
+
+@media (max-width: 640px) {
+    .cal-week-grid {
+        min-width: 700px; /* colunas um pouco mais estreitas no celular */
+        gap: 5px;
+    }
+    .cal-day-col {
+        min-height: 120px;
+    }
+    .cal-day-num { font-size: 1.1rem; }
+    .cal-event   { padding: 5px 7px; }
+
+    .agenda-date-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .agenda-date-label {
+        border-right: none;
+        border-bottom: 2px solid var(--color-border);
+        padding-right: 0;
+        padding-bottom: 6px;
+        min-width: auto;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+    }
+    .agenda-aula-card {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .agenda-aula-actions {
+        width: 100%;
+    }
+    .view-toggle-btn { padding: 5px 10px; font-size: .75rem; }
+}
+
+/* ============================================================
+   FINANCEIRO — COBRANÇA RECORRENTE
+   ============================================================ */
+.fin-tipo-toggle {
+    display: flex;
+    gap: 6px;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+}
+.fin-tipo-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    border-radius: calc(var(--radius-sm) - 2px);
+    cursor: pointer;
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--color-text-2);
+    transition: all var(--transition);
+    font-family: var(--font);
+    text-align: center;
+}
+.fin-tipo-btn.active {
+    background: var(--color-surface);
+    color: var(--color-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+}

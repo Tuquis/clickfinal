@@ -70,5 +70,15 @@ var CATEGORIAS_PSICO = {
     social: 'Social'
 };
 
+// ============================================================
+// EMAILJS — Notificação de aula para professor
+// Preencha após seguir o passo a passo de configuração
+// ============================================================
+window.EMAILJS_CONFIG = {
+    publicKey:  'jclQiDLL5puzfQEFr',
+    serviceId:  'service_c6lui2h',
+    templateId: 'template_du9xhya'
+};
+
 // Namespace de módulos — deve existir antes dos arquivos de módulo carregarem
 window.Modules = {};
