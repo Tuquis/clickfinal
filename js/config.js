@@ -8,10 +8,9 @@
     var url = 'https://kverxbbwvmxcdiqwcijp.supabase.co';
     var key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZXJ4YmJ3dm14Y2RpcXdjaWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MzYxMzUsImV4cCI6MjA5MzIxMjEzNX0.yZW-29JAIuJvZgsDO6gy8gmGswz4NgDTW1M0izGxZAI';
 
-    // SERVICE ROLE KEY — usada apenas para criar usuários no Auth Admin
-    // Supabase Dashboard → Settings → API → service_role
-    window.SUPABASE_URL         = url;
-    window.SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZXJ4YmJ3dm14Y2RpcXdjaWpwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzYzNjEzNSwiZXhwIjoyMDkzMjEyMTM1fQ.8oqv5SwRA7aQspqRT0xK5KsRYwVcj1jJPbX_WD6GoPA';
+    // Service role key removida do frontend — operações admin
+    // são feitas via Edge Function admin-users (supabase/functions/admin-users)
+    window.SUPABASE_URL = url;
 
     var lib = window.supabase; // referência à lib antes de sobrescrever
     window.supabase = lib.createClient(url, key, {

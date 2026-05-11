@@ -1,0 +1,25 @@
+# ============================================================
+# Segredos — NUNCA commitar
+# ============================================================
+supabase/.env.secrets
+.env
+.env.local
+.env.*.local
+
+# Ferramenta de uso único (contém service key)
+disparo_retroativo.html
+
+# Dependências
+node_modules/
+
+# Build / cache
+.cache/
+dist/
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/settings.json
+.idea/
+*.swp
+*.swo

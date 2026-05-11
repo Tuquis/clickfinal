@@ -337,55 +337,34 @@ Modules.Usuarios = {
         openModal('modal-usuario');
     },
 
-    // Cria usuário no Supabase Auth usando a Admin API (service role key)
-    async _criarAuthUser(email, senha, nome, role) {
-        if (!window.SUPABASE_SERVICE_KEY || window.SUPABASE_SERVICE_KEY === 'COLE_SUA_SERVICE_ROLE_KEY_AQUI') {
-            throw new Error('Configure SUPABASE_SERVICE_KEY no arquivo js/config.js');
-        }
+    // ── Chamada genérica para a Edge Function admin-users ─────
+    async _adminCall(payload) {
+        var session = (await supabase.auth.getSession()).data.session;
+        if (!session) throw new Error('Sessão expirada. Faça login novamente.');
 
-        var resp = await fetch(window.SUPABASE_URL + '/auth/v1/admin/users', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': window.SUPABASE_SERVICE_KEY,
-                'Authorization': 'Bearer ' + window.SUPABASE_SERVICE_KEY
-            },
-            body: JSON.stringify({
-                email: email,
-                password: senha,
-                email_confirm: true,
-                user_metadata: { nome: nome, role: role }
-            })
-        });
+        var resp = await fetch(
+            window.SUPABASE_URL + '/functions/v1/admin-users',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + session.access_token
+                },
+                body: JSON.stringify(payload)
+            }
+        );
 
         var json = await resp.json();
-        if (!resp.ok) {
-            throw new Error(json.msg || json.message || 'Erro ao criar usuário no Auth');
-        }
-        return json; // contém json.id = auth_id
+        if (!resp.ok) throw new Error(json.error || 'Erro na operação de admin');
+        return json;
     },
 
-    // Atualiza senha via Admin API
+    async _criarAuthUser(email, senha, nome, role) {
+        return this._adminCall({ action: 'create', email, password: senha, nome, role });
+    },
+
     async _atualizarSenhaAuth(authId, novaSenha) {
-        if (!window.SUPABASE_SERVICE_KEY || window.SUPABASE_SERVICE_KEY === 'COLE_SUA_SERVICE_ROLE_KEY_AQUI') {
-            throw new Error('Configure SUPABASE_SERVICE_KEY no arquivo js/config.js');
-        }
-
-        var resp = await fetch(window.SUPABASE_URL + '/auth/v1/admin/users/' + authId, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': window.SUPABASE_SERVICE_KEY,
-                'Authorization': 'Bearer ' + window.SUPABASE_SERVICE_KEY
-            },
-            body: JSON.stringify({ password: novaSenha })
-        });
-
-        var json = await resp.json();
-        if (!resp.ok) {
-            throw new Error(json.msg || json.message || 'Erro ao atualizar senha');
-        }
-        return json;
+        return this._adminCall({ action: 'update_password', authId, password: novaSenha });
     },
 
     async save() {
@@ -568,13 +547,7 @@ Modules.Usuarios = {
     },
 
     async _deletarAuthUser(authId) {
-        if (!window.SUPABASE_SERVICE_KEY || window.SUPABASE_SERVICE_KEY === 'COLE_SUA_SERVICE_ROLE_KEY_AQUI') return;
-        await fetch(window.SUPABASE_URL + '/auth/v1/admin/users/' + authId, {
-            method: 'DELETE',
-            headers: {
-                'apikey': window.SUPABASE_SERVICE_KEY,
-                'Authorization': 'Bearer ' + window.SUPABASE_SERVICE_KEY
-            }
-        });
+        if (!authId) return;
+        await this._adminCall({ action: 'delete', authId }).catch(console.warn);
     }
 };
