@@ -2263,7 +2263,10 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
+    flex: 1;
 }
+.chat-header-info > div { min-width: 0; }
 .chat-avatar {
     width: 40px;
     height: 40px;
@@ -2553,4 +2556,241 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .notif-msg-btn {
     flex-shrink: 0;
     white-space: nowrap;
+}
+
+/* ============================================================
+   CHAT — Anexos (arquivos e imagens)
+   ============================================================ */
+
+/* Footer agora é coluna para acomodar preview */
+.chat-footer {
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+}
+
+/* Row com clipe + textarea + enviar */
+.chat-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 12px 16px;
+}
+
+/* Botão clipe */
+.chat-attach-btn {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+    flex-shrink: 0;
+    color: var(--color-text-3);
+    transition: background .15s, color .15s;
+    height: 42px;
+    width: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.chat-attach-btn:hover { background: var(--color-surface-2); color: var(--color-primary); }
+
+/* Área de preview do arquivo selecionado */
+.chat-file-preview {
+    padding: 10px 16px 0;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+}
+.chat-preview-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+}
+.chat-preview-img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+.chat-preview-ext {
+    font-size: .65rem;
+    font-weight: 700;
+    background: var(--color-primary);
+    color: #fff;
+    padding: 3px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.chat-preview-name {
+    flex: 1;
+    font-size: .82rem;
+    color: var(--color-text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.chat-preview-badge {
+    font-size: .72rem;
+    color: var(--color-text-3);
+    flex-shrink: 0;
+}
+.chat-preview-remove {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--color-text-3);
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: background .15s;
+}
+.chat-preview-remove:hover { background: var(--color-red-bg); color: var(--color-red); }
+
+/* Bolha com imagem */
+.chat-attachment { display: block; }
+
+.chat-attach-img {
+    max-width: 220px;
+    max-height: 200px;
+    border-radius: var(--radius-sm);
+    display: block;
+    cursor: pointer;
+    object-fit: cover;
+    transition: opacity .15s;
+}
+.chat-attach-img:hover { opacity: .88; }
+
+/* Bolha com ficheiro */
+.chat-attachment-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0,0,0,.06);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    text-decoration: none;
+    transition: background .15s;
+    min-width: 160px;
+}
+.chat-msg-mine .chat-attachment-file  { background: rgba(255,255,255,.15); }
+.chat-attachment-file:hover           { background: rgba(0,0,0,.1); }
+.chat-msg-mine .chat-attachment-file:hover { background: rgba(255,255,255,.25); }
+
+.chat-attach-ext {
+    font-size: .6rem;
+    font-weight: 700;
+    padding: 3px 5px;
+    border-radius: 4px;
+    background: rgba(0,0,0,.12);
+    color: inherit;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+.chat-attach-fname {
+    flex: 1;
+    font-size: .82rem;
+    color: inherit;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.chat-attach-dl {
+    font-size: .9rem;
+    flex-shrink: 0;
+    opacity: .7;
+}
+
+/* Texto após anexo (quando há os dois) */
+.chat-bubble-mixed .chat-bubble-text { margin-top: 6px; }
+.chat-bubble-text { word-break: break-word; white-space: pre-wrap; }
+
+/* Bolha sem padding quando só tem imagem */
+.chat-bubble:has(.chat-attach-img) {
+    padding: 4px;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* ============================================================
+   CHAT — Responsividade Mobile
+   ============================================================ */
+
+/* ── Tablet / phablet (≤ 768px): chat ocupa tela inteira ─── */
+@media (max-width: 768px) {
+
+    /* Remove o padding e alinhamento genérico de modal */
+    #modal-chat {
+        padding: 0;
+        align-items: stretch;
+        backdrop-filter: none; /* performance em dispositivos móveis */
+    }
+
+    .modal-chat-box {
+        width: 100%;
+        max-width: 100%;
+        /* dvh = viewport real (exclui barra de endereço) — fallback para vh */
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+
+    .chat-header        { padding: 12px 14px; }
+    .chat-messages      { padding: 10px 12px; }
+    .chat-input-row     { padding: 10px 10px; }
+    .chat-file-preview  { padding: 8px 10px 0; }
+
+    .chat-msg           { max-width: 85%; }
+
+    /* Scroll mais suave no iOS */
+    .chat-messages      { -webkit-overflow-scrolling: touch; }
+}
+
+/* ── Smartphone pequeno (≤ 480px) ───────────────────────── */
+@media (max-width: 480px) {
+
+    /* Título pode ficar longo — trunca com ellipsis */
+    .chat-header-info   { min-width: 0; }
+    .chat-header-title  {
+        font-size: .9rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 52vw;
+    }
+    .chat-header-sub    { font-size: .68rem; }
+
+    /* Avatar menor para sobrar espaço */
+    .chat-avatar        { width: 34px; height: 34px; font-size: 1rem; }
+
+    /* Bolhas */
+    .chat-msg           { max-width: 90%; }
+    .chat-bubble        { font-size: .875rem; padding: 8px 12px; }
+
+    /* Imagens: não ultrapassam 72% da largura do telefone */
+    .chat-attach-img    { max-width: min(200px, 72vw); max-height: 180px; }
+
+    /* Botões de ação maiores (mínimo 44×44 recomendado por Apple/Google) */
+    .chat-attach-btn    { width: 44px; height: 44px; font-size: 1.3rem; }
+    .chat-send-btn      { height: 44px; padding: 0 14px; font-size: .85rem; }
+
+    /* Separador de data mais compacto */
+    .chat-date-sep      { font-size: .65rem; margin: 8px 0 4px; }
+    .chat-date-sep::before,
+    .chat-date-sep::after { width: 22%; }
+
+    /* Rodapé: adiciona espaço para a home-bar do iPhone (safe area) */
+    .chat-input-row {
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
 }

@@ -288,7 +288,7 @@ Modules.Dashboard = {
     async _fetchMensagensNaoLidas(uid) {
         const { data: msgs, error } = await supabase
             .from('mensagens')
-            .select('id, agenda_id, remetente_id, conteudo, created_at')
+            .select('id, agenda_id, remetente_id, conteudo, created_at, anexo_url, anexo_nome')
             .eq('lida', false)
             .neq('remetente_id', uid)
             .order('created_at', { ascending: false })
@@ -331,7 +331,12 @@ Modules.Dashboard = {
                 : '';
             const horario  = aula ? fmt.time(aula.horario) : '';
             const disciplina = aula?.disciplina ? escapeHtml(aula.disciplina) + ' · ' : '';
-            const trecho   = escapeHtml((n.ultimaMsg.conteudo || '').substring(0, 80)) + (n.ultimaMsg.conteudo?.length > 80 ? '…' : '');
+            const msg       = n.ultimaMsg;
+            const temAnexo  = !!msg.anexo_url;
+            const textoReal = msg.conteudo && msg.conteudo !== msg.anexo_nome ? msg.conteudo : '';
+            const trecho    = temAnexo && !textoReal
+                ? '📎 ' + escapeHtml(msg.anexo_nome || 'Arquivo')
+                : escapeHtml((textoReal || '').substring(0, 80)) + (textoReal?.length > 80 ? '…' : '');
 
             return `
                 <div class="notif-msg-item">
