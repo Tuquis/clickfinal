@@ -165,6 +165,7 @@ Modules.Relatorios = {
         Modules.Relatorios._loadList();
     },
 
+    // ── Labels ───────────────────────────────────────────────────
     _COMP_LABELS: {
         excelente: 'Participou ativamente e demonstrou interesse',
         bom:       'Participou com engajamento moderado',
@@ -196,14 +197,41 @@ Modules.Relatorios = {
         organizacao: 'Organização e método de estudo'
     },
     _SOCIO_LABELS: {
-        atencao:      'Atenção e foco',
-        autoconfianca:'Autoconfiança',
-        comunicacao:  'Comunicação e expressão'
+        atencao:       'Atenção e foco',
+        autoconfianca: 'Autoconfiança',
+        comunicacao:   'Comunicação e expressão'
     },
+    _META_LABELS: {
+        sim:          'Sim — meta totalmente atingida',
+        parcialmente: 'Parcialmente atingida',
+        nao:          'Não atingida'
+    },
+    _INTERATIV_LABELS: {
+        perguntas:  'Fez muitas perguntas',
+        passivo:    'Foi passivo',
+        solicitado: 'Apenas respondeu quando solicitado'
+    },
+    _FERR_LABELS: {
+        material_proprio:  'Material Didático Próprio',
+        exercicios_extras: 'Exercícios Extras',
+        recursos_digitais: 'Recursos Digitais / Vídeos',
+        jogos_pedagogicos: 'Jogos Pedagógicos'
+    },
+
     _badgeComp: function(v) {
         if (v === 'excelente') return 'badge-success';
         if (v === 'bom' || v === 'boa') return 'badge-info';
         return 'badge-secondary';
+    },
+
+    // ── Handlers para campos condicionais ────────────────────────
+    _onMetaChange: function(v) {
+        var box = document.getElementById('rel-retomar-box');
+        if (box) box.style.display = (v === 'parcialmente' || v === 'nao') ? 'block' : 'none';
+    },
+    _onCameraChange: function(v) {
+        var box = document.getElementById('rel-camera-detalhe-box');
+        if (box) box.style.display = v === 'sim' ? 'block' : 'none';
     },
 
     // ── ABRIR MODAL VALIDAR AULA ──────────────────────────────────
@@ -212,7 +240,6 @@ Modules.Relatorios = {
         var body = document.getElementById('validar-body');
         body.innerHTML = '<div class="loader-inline"></div>';
 
-        // Todos os alunos ativos
         var res = await supabase
             .from('v_alunos_completo')
             .select('id, nome, serie, disciplina, aulas_disponiveis')
@@ -220,7 +247,6 @@ Modules.Relatorios = {
             .order('nome');
 
         var alunos = res.data || [];
-
         var _prefillAluno = prefillAlunoId || null;
 
         body.innerHTML = `
@@ -243,9 +269,7 @@ Modules.Relatorios = {
                     }).join('')}
                 </select>
             </div>
-            <div id="rel-saldo-alerta" style="display:none"
-                class="info-box" style="background:var(--color-red-bg);border-color:#fecaca;color:var(--color-red)">
-            </div>
+            <div id="rel-saldo-alerta" style="display:none"></div>
 
             <div id="rel-form-fields" style="display:none">
                 <hr class="divider" />
@@ -257,7 +281,36 @@ Modules.Relatorios = {
                         placeholder="Descreva o conteúdo trabalhado na aula..."></textarea>
                 </div>
 
-                <!-- 2. COMPORTAMENTO -->
+                <!-- 2. META DA AULA -->
+                <div class="rel-section">
+                    <div class="rel-section-title">🎯 Meta da aula atingida?</div>
+                    <div class="radio-list">
+                        <label class="radio-item">
+                            <input type="radio" name="rel-meta" value="sim"
+                                onchange="Modules.Relatorios._onMetaChange(this.value)" />
+                            Sim
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="rel-meta" value="parcialmente"
+                                onchange="Modules.Relatorios._onMetaChange(this.value)" />
+                            Parcialmente
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="rel-meta" value="nao"
+                                onchange="Modules.Relatorios._onMetaChange(this.value)" />
+                            Não
+                        </label>
+                    </div>
+                    <div id="rel-retomar-box" style="display:none;margin-top:10px;padding:12px 14px;background:var(--color-surface-2);border-radius:var(--radius-sm);border-left:3px solid var(--color-warning, #f59e0b)">
+                        <div style="font-weight:600;font-size:.875rem;margin-bottom:8px">Necessidade de retomar o conteúdo?</div>
+                        <div class="radio-list" style="flex-direction:row;gap:20px">
+                            <label class="radio-item"><input type="radio" name="rel-retomar" value="sim" /> Sim</label>
+                            <label class="radio-item"><input type="radio" name="rel-retomar" value="nao" /> Não</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. COMPORTAMENTO -->
                 <div class="rel-section">
                     <div class="rel-section-title">🎓 Comportamento do aluno</div>
                     <div class="radio-list">
@@ -280,7 +333,26 @@ Modules.Relatorios = {
                     </div>
                 </div>
 
-                <!-- 3. COMPREENSÃO -->
+                <!-- 4. NÍVEL DE INTERATIVIDADE -->
+                <div class="rel-section">
+                    <div class="rel-section-title">💬 Nível de interatividade</div>
+                    <div class="radio-list">
+                        <label class="radio-item">
+                            <input type="radio" name="rel-interatividade" value="perguntas" />
+                            Fez muitas perguntas
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="rel-interatividade" value="passivo" />
+                            Foi passivo
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="rel-interatividade" value="solicitado" />
+                            Apenas respondeu quando solicitado
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 5. COMPREENSÃO -->
                 <div class="rel-section">
                     <div class="rel-section-title">🧠 Nível de compreensão</div>
                     <div class="radio-list">
@@ -299,7 +371,7 @@ Modules.Relatorios = {
                     </div>
                 </div>
 
-                <!-- 4. HABILIDADES -->
+                <!-- 6. HABILIDADES -->
                 <div class="rel-section">
                     <div class="rel-section-title">⭐ Habilidades observadas</div>
                     <p class="rel-sub-title">Acadêmicas</p>
@@ -338,7 +410,58 @@ Modules.Relatorios = {
                     </div>
                 </div>
 
-                <!-- 5. RECOMENDAÇÕES -->
+                <!-- 7. FERRAMENTAS UTILIZADAS -->
+                <div class="rel-section">
+                    <div class="rel-section-title">🛠️ Ferramentas utilizadas</div>
+                    <div class="check-grid">
+                        <label class="check-item">
+                            <input type="checkbox" value="material_proprio" class="ferr-check" />
+                            Material Didático Próprio
+                        </label>
+                        <label class="check-item">
+                            <input type="checkbox" value="exercicios_extras" class="ferr-check" />
+                            Exercícios Extras
+                        </label>
+                        <label class="check-item">
+                            <input type="checkbox" value="recursos_digitais" class="ferr-check" />
+                            Recursos Digitais / Vídeos
+                        </label>
+                        <label class="check-item">
+                            <input type="checkbox" value="jogos_pedagogicos" class="ferr-check" />
+                            Jogos Pedagógicos
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 8. CÂMERA -->
+                <div class="rel-section">
+                    <div class="rel-section-title">📷 Aluno teve objeção em ficar com a câmera ligada?</div>
+                    <div class="radio-list" style="flex-direction:row;gap:20px">
+                        <label class="radio-item">
+                            <input type="radio" name="rel-camera" value="nao"
+                                onchange="Modules.Relatorios._onCameraChange(this.value)" />
+                            Não
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="rel-camera" value="sim"
+                                onchange="Modules.Relatorios._onCameraChange(this.value)" />
+                            Sim
+                        </label>
+                    </div>
+                    <div id="rel-camera-detalhe-box" style="display:none;margin-top:10px">
+                        <textarea class="input textarea" id="rel-camera-detalhe" rows="2"
+                            placeholder="Explique o ocorrido..."></textarea>
+                    </div>
+                </div>
+
+                <!-- 9. OBSERVAÇÕES -->
+                <div class="rel-section">
+                    <div class="rel-section-title">📝 Observações</div>
+                    <textarea class="input textarea" id="rel-observacoes" rows="3"
+                        placeholder="Observações gerais sobre a aula..."></textarea>
+                </div>
+
+                <!-- 10. RECOMENDAÇÕES -->
                 <div class="rel-section">
                     <div class="rel-section-title">🏠 Recomendações para casa</div>
                     <textarea class="input textarea" id="rel-recomendacoes" rows="3"
@@ -368,7 +491,6 @@ Modules.Relatorios = {
 
         document.getElementById('rel-aluno-id').value = alunoId;
 
-        // Verificar saldo pelo option selecionado
         var sel = document.getElementById('rel-aluno-select');
         var opt = sel.options[sel.selectedIndex];
         var txt = opt.textContent;
@@ -393,21 +515,46 @@ Modules.Relatorios = {
     },
 
     async salvar() {
-        var alunoId     = document.getElementById('rel-aluno-id').value;
-        var conteudo    = document.getElementById('rel-conteudo')
-                            ? document.getElementById('rel-conteudo').value.trim() : '';
-        var comprEl     = document.querySelector('input[name="rel-compreensao"]:checked');
-        var compreensao = comprEl ? comprEl.value : null;
-        var recomEl     = document.getElementById('rel-recomendacoes');
+        var alunoId       = document.getElementById('rel-aluno-id').value;
+        var conteudo      = (document.getElementById('rel-conteudo')?.value || '').trim();
+        var comportEl     = document.querySelector('input[name="rel-comportamento"]:checked');
+        var comportamento = comportEl ? comportEl.value : null;
+        var comprEl       = document.querySelector('input[name="rel-compreensao"]:checked');
+        var compreensao   = comprEl ? comprEl.value : null;
+        var recomEl       = document.getElementById('rel-recomendacoes');
         var recomendacoes = recomEl ? recomEl.value.trim() : '';
 
-        var comportEl   = document.querySelector('input[name="rel-comportamento"]:checked');
-        var comportamento = comportEl ? comportEl.value : null;
+        // Novos campos
+        var metaEl       = document.querySelector('input[name="rel-meta"]:checked');
+        var meta_atingida = metaEl ? metaEl.value : null;
+
+        var retomarEl      = document.querySelector('input[name="rel-retomar"]:checked');
+        var retomar_conteudo = (meta_atingida === 'parcialmente' || meta_atingida === 'nao')
+            ? (retomarEl ? retomarEl.value === 'sim' : null)
+            : null;
+
+        var interativEl   = document.querySelector('input[name="rel-interatividade"]:checked');
+        var interatividade = interativEl ? interativEl.value : null;
+
+        var ferramentas   = this._getChecked('ferr-check');
+
+        var obsEl         = document.getElementById('rel-observacoes');
+        var observacoes   = obsEl ? obsEl.value.trim() : '';
+
+        var cameraEl      = document.querySelector('input[name="rel-camera"]:checked');
+        var camera_objecao = cameraEl ? cameraEl.value === 'sim' : null;
+
+        var camDetEl      = document.getElementById('rel-camera-detalhe');
+        var camera_objecao_detalhe = (camera_objecao && camDetEl)
+            ? camDetEl.value.trim() : null;
 
         if (!alunoId)      return showToast('Selecione o aluno', 'error');
         if (!conteudo)     return showToast('Informe o conteúdo ministrado', 'error');
+        if (!meta_atingida)return showToast('Informe se a meta da aula foi atingida', 'error');
         if (!comportamento)return showToast('Selecione o comportamento do aluno', 'error');
+        if (!interatividade)return showToast('Selecione o nível de interatividade', 'error');
         if (!compreensao)  return showToast('Selecione o nível de compreensão', 'error');
+        if (camera_objecao === null) return showToast('Informe sobre a câmera do aluno', 'error');
 
         var academicas      = this._getChecked('hab-check');
         var socioemocionais = this._getChecked('socio-check');
@@ -415,21 +562,29 @@ Modules.Relatorios = {
         setLoading('#btn-salvar-relatorio', true);
         try {
             var ins = await supabase.from('relatorios').insert({
-                professor_id:        AppState.userProfile.id,
-                aluno_id:            alunoId,
-                conteudo_ministrado: conteudo,
-                comportamento:       comportamento,
-                compreensao:         compreensao,
-                recomendacoes:       recomendacoes || null,
+                professor_id:          AppState.userProfile.id,
+                aluno_id:              alunoId,
+                conteudo_ministrado:   conteudo,
+                comportamento:         comportamento,
+                compreensao:           compreensao,
+                recomendacoes:         recomendacoes || null,
                 habilidades: {
-                    academicas:      academicas,
-                    socioemocionais: socioemocionais
-                }
+                    academicas:        academicas,
+                    socioemocionais:   socioemocionais
+                },
+                // novos campos
+                meta_atingida:              meta_atingida,
+                retomar_conteudo:           retomar_conteudo,
+                interatividade:             interatividade,
+                ferramentas:                ferramentas.length ? ferramentas : null,
+                observacoes:                observacoes || null,
+                camera_objecao:             camera_objecao,
+                camera_objecao_detalhe:     camera_objecao_detalhe || null
             });
 
             if (ins.error) throw ins.error;
 
-            // Incrementar saldo_aulas_dadas do professor em professores_info
+            // Incrementar saldo_aulas_dadas do professor
             const piRes = await supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', AppState.userProfile.id).single();
             await supabase.from('professores_info').update({ saldo_aulas_dadas: (piRes.data?.saldo_aulas_dadas || 0) + 1 }).eq('usuario_id', AppState.userProfile.id);
 
@@ -473,6 +628,11 @@ Modules.Relatorios = {
         var comps = hab.comportamentos  || [];
         var acad  = hab.academicas      || [];
         var socio = hab.socioemocionais || [];
+        var ferr  = r.ferramentas || [];
+
+        var metaBadge = r.meta_atingida === 'sim'
+            ? 'badge-success'
+            : r.meta_atingida === 'parcialmente' ? 'badge-warning' : 'badge-danger';
 
         body.innerHTML = `
             <div id="rel-pdf-${id}" class="rel-view">
@@ -500,6 +660,18 @@ Modules.Relatorios = {
                     <p>${escapeHtml(r.conteudo_ministrado)}</p>
                 </div>
 
+                ${r.meta_atingida ? `
+                <div class="rel-bloco">
+                    <div class="rel-bloco-titulo">🎯 Meta da aula atingida</div>
+                    <p>
+                        ${badge(Modules.Relatorios._META_LABELS[r.meta_atingida] || r.meta_atingida, metaBadge)}
+                    </p>
+                    ${r.retomar_conteudo !== null && r.retomar_conteudo !== undefined ? `
+                        <p style="margin-top:6px;font-size:.875rem;color:var(--color-text-muted)">
+                            Necessidade de retomar: <strong>${r.retomar_conteudo ? 'Sim' : 'Não'}</strong>
+                        </p>` : ''}
+                </div>` : ''}
+
                 <div class="rel-bloco">
                     <div class="rel-bloco-titulo">🎓 Comportamento</div>
                     ${comps.length
@@ -510,6 +682,12 @@ Modules.Relatorios = {
                         : `<p>${escapeHtml(Modules.Relatorios._COMP_LABELS[r.comportamento] || r.comportamento || '—')}</p>`
                     }
                 </div>
+
+                ${r.interatividade ? `
+                <div class="rel-bloco">
+                    <div class="rel-bloco-titulo">💬 Nível de interatividade</div>
+                    <p>${escapeHtml(Modules.Relatorios._INTERATIV_LABELS[r.interatividade] || r.interatividade)}</p>
+                </div>` : ''}
 
                 <div class="rel-bloco">
                     <div class="rel-bloco-titulo">🧠 Nível de compreensão</div>
@@ -536,6 +714,32 @@ Modules.Relatorios = {
                                 return '<li>' + escapeHtml(Modules.Relatorios._SOCIO_LABELS[h] || h) + '</li>';
                             }).join('')}
                         </ul>` : ''}
+                </div>` : ''}
+
+                ${ferr.length ? `
+                <div class="rel-bloco">
+                    <div class="rel-bloco-titulo">🛠️ Ferramentas utilizadas</div>
+                    <ul class="rel-list">
+                        ${ferr.map(function(f) {
+                            return '<li>' + escapeHtml(Modules.Relatorios._FERR_LABELS[f] || f) + '</li>';
+                        }).join('')}
+                    </ul>
+                </div>` : ''}
+
+                ${(r.camera_objecao !== null && r.camera_objecao !== undefined) ? `
+                <div class="rel-bloco">
+                    <div class="rel-bloco-titulo">📷 Câmera do aluno</div>
+                    <p>Objeção em ficar com câmera ligada: <strong>${r.camera_objecao ? 'Sim' : 'Não'}</strong></p>
+                    ${r.camera_objecao && r.camera_objecao_detalhe ? `
+                        <p style="margin-top:6px;padding:10px 12px;background:var(--color-surface-2);border-radius:var(--radius-sm);font-size:.875rem">
+                            ${escapeHtml(r.camera_objecao_detalhe)}
+                        </p>` : ''}
+                </div>` : ''}
+
+                ${r.observacoes ? `
+                <div class="rel-bloco">
+                    <div class="rel-bloco-titulo">📝 Observações</div>
+                    <p>${escapeHtml(r.observacoes)}</p>
                 </div>` : ''}
 
                 ${r.recomendacoes ? `
@@ -568,23 +772,20 @@ Modules.Relatorios = {
             var r = res.data;
             if (!r) return showToast('Relatório não encontrado', 'error');
 
-            var alunoNome    = (r.aluno && r.aluno.nome) || '—';
-            var profNome     = (r.professor && r.professor.nome) || '—';
+            var alunoNome = (r.aluno && r.aluno.nome) || '—';
+            var profNome  = (r.professor && r.professor.nome) || '—';
+
             var habAcad  = (r.habilidades?.academicas || [])
                 .map(function(k) { return Modules.Relatorios._HAB_LABELS[k] || k; }).join(', ') || 'Nenhuma';
             var habSocio = (r.habilidades?.socioemocionais || [])
                 .map(function(k) { return Modules.Relatorios._SOCIO_LABELS[k] || k; }).join(', ') || 'Nenhuma';
+            var ferrStr  = (r.ferramentas || [])
+                .map(function(k) { return Modules.Relatorios._FERR_LABELS[k] || k; }).join(', ') || 'Nenhuma';
 
             // NFC normaliza caracteres compostos (ã, ç, é) para jsPDF renderizar corretamente
-            var nfc = s => s ? String(s).normalize('NFC') : '';
+            var nfc = function(s) { return s ? String(s).normalize('NFC') : ''; };
 
             var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-            // ── LOGO ─────────────────────────────────────────────────
-            // Coloque o arquivo da logo em: /home/arthur/Documentos/clickfinal/img/logo-click.png
-            // Para exibir, descomente as linhas abaixo e ajuste largura/altura (ex: 30x12 mm):
-            // var logoBase64 = /* importe via fetch ou embed em base64 */;
-            // doc.addImage(logoBase64, 'PNG', 10, 8, 30, 12);
 
             // ── HEADER ────────────────────────────────────────────────
             doc.setFillColor(111, 79, 227);
@@ -620,6 +821,46 @@ Modules.Relatorios = {
             doc.text(nfc(profNome), 145, 50);
 
             // ── TABELA ────────────────────────────────────────────────
+            var tableBody = [
+                { item: nfc('Data'),                        detalhe: nfc(new Date(r.created_at).toLocaleDateString('pt-BR')) },
+                { item: nfc('Conteúdo Trabalhado'),         detalhe: nfc(r.conteudo_ministrado || '—') }
+            ];
+
+            if (r.meta_atingida) {
+                tableBody.push({ item: nfc('Meta da Aula Atingida'), detalhe: nfc(Modules.Relatorios._META_LABELS[r.meta_atingida] || r.meta_atingida) });
+                if (r.retomar_conteudo !== null && r.retomar_conteudo !== undefined) {
+                    tableBody.push({ item: nfc('Retomar Conteúdo'), detalhe: nfc(r.retomar_conteudo ? 'Sim' : 'Não') });
+                }
+            }
+
+            tableBody.push(
+                { item: nfc('Comportamento'),               detalhe: nfc(Modules.Relatorios._COMP_LABELS[r.comportamento]   || r.comportamento  || '—') }
+            );
+
+            if (r.interatividade) {
+                tableBody.push({ item: nfc('Nível de Interatividade'), detalhe: nfc(Modules.Relatorios._INTERATIV_LABELS[r.interatividade] || r.interatividade) });
+            }
+
+            tableBody.push(
+                { item: nfc('Compreensão'),                 detalhe: nfc(Modules.Relatorios._COMPR_LABELS[r.compreensao]    || r.compreensao    || '—') },
+                { item: nfc('Habilidades Acadêmicas'),      detalhe: nfc(habAcad) },
+                { item: nfc('Habilidades Socioemocionais'), detalhe: nfc(habSocio) },
+                { item: nfc('Ferramentas Utilizadas'),      detalhe: nfc(ferrStr) }
+            );
+
+            if (r.camera_objecao !== null && r.camera_objecao !== undefined) {
+                tableBody.push({ item: nfc('Objeção à Câmera'), detalhe: nfc(r.camera_objecao ? 'Sim' : 'Não') });
+                if (r.camera_objecao && r.camera_objecao_detalhe) {
+                    tableBody.push({ item: nfc('Detalhe Câmera'), detalhe: nfc(r.camera_objecao_detalhe) });
+                }
+            }
+
+            if (r.observacoes) {
+                tableBody.push({ item: nfc('Observações'), detalhe: nfc(r.observacoes) });
+            }
+
+            tableBody.push({ item: nfc('Recomendações'), detalhe: nfc(r.recomendacoes || 'Nenhuma') });
+
             doc.autoTable({
                 startY: 70,
                 theme: 'grid',
@@ -629,16 +870,8 @@ Modules.Relatorios = {
                     { header: 'Categoria', dataKey: 'item' },
                     { header: 'Descrição',  dataKey: 'detalhe' }
                 ],
-                body: [
-                    { item: nfc('Data'),                       detalhe: nfc(new Date(r.created_at).toLocaleDateString('pt-BR')) },
-                    { item: nfc('Conteúdo Trabalhado'),        detalhe: nfc(r.conteudo_ministrado || '—') },
-                    { item: nfc('Comportamento'), detalhe: nfc(Modules.Relatorios._COMP_LABELS[r.comportamento]  || r.comportamento  || '—') },
-                    { item: nfc('Compreensão'),  detalhe: nfc(Modules.Relatorios._COMPR_LABELS[r.compreensao]   || r.compreensao    || '—') },
-                    { item: nfc('Habilidades Acadêmicas'),     detalhe: nfc(habAcad) },
-                    { item: nfc('Habilidades Socioemocionais'),detalhe: nfc(habSocio) },
-                    { item: nfc('Recomendações'),              detalhe: nfc(r.recomendacoes       || 'Nenhuma') }
-                ],
-                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
+                body: tableBody,
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 65 } }
             });
 
             // ── RODAPÉ ────────────────────────────────────────────────
