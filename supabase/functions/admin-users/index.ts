@@ -13,6 +13,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+const CORS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
+}
+
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 // ── Verifica se o token pertence a um admin ───────────────────
@@ -34,9 +40,13 @@ async function getAdminUser(authHeader: string | null) {
 
 // ── Handler principal ─────────────────────────────────────────
 Deno.serve(async (req) => {
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = { 'Content-Type': 'application/json', ...CORS }
 
-  // Apenas POST aceito (action vem no body)
+  // Responde ao preflight CORS que o browser envia antes do POST
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS })
+  }
+
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers })
   }

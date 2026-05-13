@@ -348,7 +348,8 @@ Modules.Usuarios = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + session.access_token
+                    'Authorization': 'Bearer ' + session.access_token,
+                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZXJ4YmJ3dm14Y2RpcXdjaWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MzYxMzUsImV4cCI6MjA5MzIxMjEzNX0.yZW-29JAIuJvZgsDO6gy8gmGswz4NgDTW1M0izGxZAI'
                 },
                 body: JSON.stringify(payload)
             }
