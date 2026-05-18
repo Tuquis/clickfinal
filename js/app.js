@@ -43,6 +43,7 @@ const SIDEBAR_ITEMS = {
         { id: 'disponibilidade', icon: '🕐', label: 'Disponibilidade' },
         { id: 'financeiro',      icon: '💰', label: 'Financeiro' },
         { id: 'relatorios',      icon: '📄', label: 'Relatórios' },
+        { id: 'psicopedagogia',  icon: '🧠', label: 'Psicopedagogia' },
         { id: 'auditoria',       icon: '🔍', label: 'Auditoria' },
     ],
     professor: [
@@ -64,7 +65,7 @@ const SIDEBAR_ITEMS = {
         { id: 'alunos',         icon: '🎓', label: 'Alunos' },
         { id: 'agenda',         icon: '📅', label: 'Agenda' },
         { id: 'relatorios',     icon: '📄', label: 'Relatórios' },
-        { id: 'psicopedagogia', icon: '🧠', label: 'Observações' },
+        { id: 'psicopedagogia', icon: '🧠', label: 'Iniciar Consulta' },
     ]
 };
 

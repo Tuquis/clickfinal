@@ -106,7 +106,7 @@ Modules.Alunos = {
                         <th>Disciplina</th>
                         <th>Responsável</th>
                         <th>Telefone</th>
-                        <th>Aulas</th>
+                        ${Auth.can('admin') ? '<th>Aulas</th>' : ''}
                         <th>Status</th>
                         <th>Ações</th>
                     </tr>
@@ -125,11 +125,12 @@ Modules.Alunos = {
                                 <td>${escapeHtml(a.disciplina || '—')}</td>
                                 <td>${escapeHtml(a.responsavel || '—')}</td>
                                 <td>${escapeHtml(a.telefone || '—')}</td>
+                                ${Auth.can('admin') ? `
                                 <td>
                                     <span class="aulas-badge ${(a.aulas_disponiveis || 0) === 0 ? 'aulas-zero' : ''}">
                                         ${a.aulas_disponiveis || 0}
                                     </span>
-                                </td>
+                                </td>` : ''}
                                 <td>${a.ativo ? badge('Ativo','badge-success') : badge('Inativo','badge-secondary')}</td>
                                 <td>
                                     <div class="action-btns">
@@ -181,9 +182,10 @@ Modules.Alunos = {
                     <div class="info-item"><span class="info-label">Disciplina</span><span>${escapeHtml(aluno?.disciplina || '—')}</span></div>
                     <div class="info-item"><span class="info-label">Responsável</span><span>${escapeHtml(aluno?.responsavel || '—')}</span></div>
                     <div class="info-item"><span class="info-label">Telefone</span><span>${escapeHtml(aluno?.telefone || '—')}</span></div>
+                    ${Auth.can('admin') ? `
                     <div class="info-item"><span class="info-label">Aulas Disponíveis</span>
                         <span class="aulas-badge ${aluno?.aulas_disponiveis === 0 ? 'aulas-zero' : ''}">${aluno?.aulas_disponiveis || 0}</span>
-                    </div>
+                    </div>` : ''}
                     <div class="info-item"><span class="info-label">Cadastrado em</span><span>${fmt.date(aluno?.created_at)}</span></div>
                 </div>
 

@@ -63,12 +63,16 @@ Modules.Agenda = {
         const isAdmin = Auth.can('admin');
         const isProf  = Auth.can('professor');
         const isAluno = Auth.can('aluno');
+        const isPsico = Auth.can('psicopedagoga');
 
         renderContent(`
             <div class="page-header">
-                <h1 class="page-title">Agenda${isProf ? ' — Minhas Aulas' : isAluno ? ' — Minhas Aulas' : ''}</h1>
+                <h1 class="page-title">Agenda${isProf ? ' — Minhas Aulas' : isAluno ? ' — Minhas Aulas' : isPsico ? ' — Minhas Consultas' : ''}</h1>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    ${isAdmin ? `<button class="btn btn-primary" onclick="Modules.Agenda.openCreate()">+ Agendar Aula</button>` : ''}
+                    ${isAdmin ? `
+                        <button class="btn btn-primary" onclick="Modules.Agenda.openCreate()">+ Agendar Aula</button>
+                        <button class="btn btn-secondary" onclick="Modules.Agenda.openCreatePsico()">+ Consulta Psico</button>
+                    ` : ''}
                 </div>
             </div>
 
@@ -208,6 +212,62 @@ Modules.Agenda = {
                     </div>
                 </div>
             </div>
+
+            <!-- MODAL DETALHES CONSULTA PSICO -->
+            <div class="modal-overlay" id="modal-psico-detalhes">
+                <div class="modal-box modal-lg">
+                    <div class="modal-header">
+                        <h3>Consulta Psicopedagógica</h3>
+                        <button class="modal-close" onclick="closeModal('modal-psico-detalhes')">×</button>
+                    </div>
+                    <div class="modal-body" id="modal-psico-detalhes-body" style="gap:12px;"></div>
+                    <div class="modal-footer" id="modal-psico-detalhes-footer">
+                        <button class="btn btn-ghost" onclick="closeModal('modal-psico-detalhes')">Fechar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL AGENDAR CONSULTA PSICO (admin) -->
+            <div class="modal-overlay" id="modal-agenda-psico">
+                <div class="modal-box">
+                    <div class="modal-header">
+                        <h3>Agendar Consulta Psicopedagógica</h3>
+                        <button class="modal-close" onclick="closeModal('modal-agenda-psico')">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Aluno *</label>
+                                <select class="input" id="agp-aluno"><option value="">Carregando...</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Psicopedagoga *</label>
+                                <select class="input" id="agp-psico"><option value="">Carregando...</option></select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Data *</label>
+                                <input type="date" class="input" id="agp-data" min="${todayISO()}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Horário *</label>
+                                <input type="time" class="input" id="agp-horario" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Observações</label>
+                            <textarea class="input textarea" id="agp-obs" rows="2"
+                                placeholder="Observações sobre o agendamento (opcional)"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="closeModal('modal-agenda-psico')">Cancelar</button>
+                        <button class="btn btn-primary" id="btn-save-agenda-psico"
+                            onclick="Modules.Agenda.savePsico()">Agendar</button>
+                    </div>
+                </div>
+            </div>
         `);
 
         document.getElementById('ag-professor')?.addEventListener('change', async (e) => {
@@ -322,11 +382,68 @@ Modules.Agenda = {
         const isHistorico = this._tab === 'historico';
         const isCalendar  = this._view === 'calendar' && !isHistorico;
 
+        if (role === 'psicopedagoga') {
+            await this._loadPsicoAgenda(container, uid, isHistorico);
+            return;
+        }
         if (isCalendar) {
             await this._loadCalendar(container, uid, role);
         } else {
             await this._loadListView(container, uid, role, isHistorico);
         }
+    },
+
+    // ── AGENDA PSICOPEDAGOGA ──────────────────────────────────────
+    async _loadPsicoAgenda(container, uid, isHistorico) {
+        const today = todayISO();
+        let query = supabase
+            .from('agenda_psico')
+            .select(`id, data, horario, observacoes, status,
+                aluno:usuarios!agenda_psico_aluno_id_fkey(nome)`)
+            .eq('psico_id', uid)
+            .order('data', { ascending: !isHistorico })
+            .order('horario');
+
+        if (!isHistorico) {
+            query = query.eq('status', 'agendada').gte('data', today);
+        } else {
+            const dataFilter = this._filters.data;
+            const statusFilter = this._filters.status;
+            if (dataFilter)   query = query.eq('data', dataFilter);
+            if (statusFilter) query = query.eq('status', statusFilter);
+        }
+
+        const { data, error } = await query.limit(50);
+
+        if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
+
+        const _ST = { agendada: 'Agendada', realizada: 'Realizada', cancelada: 'Cancelada' };
+        const _SC = { agendada: 'badge-info', realizada: 'badge-success', cancelada: 'badge-secondary' };
+
+        if (!data?.length) {
+            container.innerHTML = emptyState(isHistorico ? 'Nenhuma consulta no histórico' : 'Nenhuma consulta agendada');
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="table">
+                <thead><tr>
+                    <th>Data</th><th>Horário</th><th>Aluno</th>
+                    <th>Observações</th><th>Status</th>
+                </tr></thead>
+                <tbody>
+                    ${data.map(a => `
+                        <tr>
+                            <td>${fmt.date(a.data)}</td>
+                            <td>${fmt.time(a.horario)}</td>
+                            <td>${escapeHtml(a.aluno?.nome || '—')}</td>
+                            <td style="font-size:.825rem;max-width:200px">${a.observacoes ? escapeHtml(a.observacoes) : '—'}</td>
+                            <td>${badge(_ST[a.status] || a.status, _SC[a.status] || 'badge-secondary')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
     },
 
     // ── VISUALIZAÇÃO CALENDÁRIO ────────────────────────────────
@@ -346,25 +463,38 @@ Modules.Agenda = {
         if (role === 'professor') query = query.eq('professor_id', uid);
         if (role === 'aluno')     query = query.eq('aluno_id', uid);
 
-        const { data, error } = await query;
+        // Admin: também carrega consultas psicopedagógicas agendadas
+        const psicoQuery = (role === 'admin')
+            ? supabase.from('agenda_psico')
+                .select(`id, data, horario, status, observacoes,
+                    aluno:usuarios!agenda_psico_aluno_id_fkey(nome),
+                    psico:usuarios!agenda_psico_psico_id_fkey(nome)`)
+                .gte('data', startISO).lte('data', endISO).eq('status', 'agendada')
+                .order('horario')
+            : Promise.resolve({ data: [] });
+
+        const [{ data, error }, { data: psicoData }] = await Promise.all([query, psicoQuery]);
         if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
 
-        // agrupa por data
+        // agrupa por data — marca consultas psico com _psico: true
         const byDate = {};
         weekDates.forEach(d => { byDate[this._isoDate(d)] = []; });
         (data || []).forEach(a => { if (byDate[a.data]) byDate[a.data].push(a); });
+        (psicoData || []).forEach(a => { if (byDate[a.data]) byDate[a.data].push({ ...a, _psico: true }); });
 
         const today     = todayISO();
         const isAdmin   = Auth.can('admin');
         const dayNames  = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
-        const totalAulas = (data || []).length;
+        const totalAulas  = (data || []).length;
+        const totalPsico  = (psicoData || []).length;
+        const totalGeral  = totalAulas + totalPsico;
 
         container.innerHTML = `
             <div class="cal-summary">
-                ${totalAulas === 0
+                ${totalGeral === 0
                     ? `<span class="cal-summary-empty">Nenhuma aula agendada nesta semana</span>`
-                    : `<span class="cal-summary-count">${totalAulas} aula${totalAulas !== 1 ? 's' : ''} nesta semana</span>`
+                    : `<span class="cal-summary-count">${totalAulas} aula${totalAulas !== 1 ? 's' : ''}${totalPsico > 0 ? ` · ${totalPsico} consulta${totalPsico !== 1 ? 's' : ''} psico` : ''} nesta semana</span>`
                 }
             </div>
             <div class="cal-scroll-wrapper">
@@ -388,6 +518,16 @@ Modules.Agenda = {
                                 ${lessons.length === 0
                                     ? `<div class="cal-empty-day">—</div>`
                                     : lessons.map(a => {
+                                        if (a._psico) {
+                                            return `
+                                                <div class="cal-event" style="background:#f3e8ff;border-left:3px solid #7c3aed;cursor:pointer"
+                                                    onclick="Modules.Agenda.viewDetailsPsico('${a.id}')">
+                                                    <div class="cal-event-time">🕐 ${fmt.time(a.horario)}</div>
+                                                    <div class="cal-event-aluno">${escapeHtml(a.aluno?.nome || '—')}</div>
+                                                    <div class="cal-event-prof">🧠 ${escapeHtml(a.psico?.nome || '—')}</div>
+                                                    <div class="cal-event-subject" style="font-size:.7rem;color:#7c3aed">Consulta Psicopedagógica</div>
+                                                </div>`;
+                                        }
                                         const colorIdx = this._profColor(a.professor_id);
                                         return `
                                             <div class="cal-event cal-color-${colorIdx}">
@@ -749,6 +889,143 @@ Modules.Agenda = {
         closeModal('modal-aula-detalhes');
         await Router.navigate('relatorios');
         await Modules.Relatorios.openView(relatorioId);
+    },
+
+    // ── DETALHES CONSULTA PSICO ───────────────────────────────
+    async viewDetailsPsico(id) {
+        openModal('modal-psico-detalhes');
+        const body   = document.getElementById('modal-psico-detalhes-body');
+        const footer = document.getElementById('modal-psico-detalhes-footer');
+        body.innerHTML = '<div class="loader-inline"></div>';
+        footer.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('modal-psico-detalhes')">Fechar</button>`;
+
+        const { data: a, error } = await supabase
+            .from('agenda_psico')
+            .select(`*, aluno:usuarios!agenda_psico_aluno_id_fkey(nome),
+                        psico:usuarios!agenda_psico_psico_id_fkey(nome)`)
+            .eq('id', id).single();
+
+        if (error || !a) {
+            body.innerHTML = '<p class="text-danger">Consulta não encontrada.</p>';
+            return;
+        }
+
+        const s = { agendada: { label: 'Agendada', cls: 'badge-info' }, realizada: { label: 'Realizada', cls: 'badge-success' }, cancelada: { label: 'Cancelada', cls: 'badge-secondary' } };
+        const st = s[a.status] || { label: a.status, cls: 'badge-secondary' };
+
+        body.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Aluno</div>
+                    <div style="font-weight:600;font-size:1rem">${escapeHtml(a.aluno?.nome || '—')}</div>
+                    ${a.aluno?.serie ? `<div style="font-size:.8125rem;color:var(--color-text-3)">${escapeHtml(a.aluno.serie)}${a.aluno.disciplina ? ' — ' + escapeHtml(a.aluno.disciplina) : ''}</div>` : ''}
+                </div>
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Psicopedagoga</div>
+                    <div style="font-weight:600;font-size:1rem">🧠 ${escapeHtml(a.psico?.nome || '—')}</div>
+                </div>
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Data</div>
+                    <div style="font-weight:600">${fmt.date(a.data)}</div>
+                </div>
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Horário</div>
+                    <div style="font-weight:600">${fmt.time(a.horario)}</div>
+                </div>
+            </div>
+            <div>
+                <div class="form-label" style="margin-bottom:6px">Status</div>
+                ${badge(st.label, st.cls)}
+            </div>
+            ${a.observacoes ? `
+            <div>
+                <div class="form-label" style="margin-bottom:6px">Observações</div>
+                <div style="background:var(--color-surface-2);border-radius:var(--radius-sm);padding:14px 16px;font-size:.9375rem;line-height:1.7;white-space:pre-wrap;border-left:3px solid #7c3aed">${escapeHtml(a.observacoes)}</div>
+            </div>` : ''}
+        `;
+
+        if (Auth.can('admin') && a.status === 'agendada') {
+            footer.innerHTML += `
+                <button class="btn btn-danger btn-sm"
+                    onclick="closeModal('modal-psico-detalhes');Modules.Agenda.cancelarConsultaPsico('${a.id}')">
+                    Cancelar Consulta
+                </button>`;
+        }
+    },
+
+    async cancelarConsultaPsico(id) {
+        const confirmed = await confirmAction('Confirma o cancelamento desta consulta?');
+        if (!confirmed) return;
+
+        const { error } = await supabase
+            .from('agenda_psico')
+            .update({ status: 'cancelada' })
+            .eq('id', id);
+
+        if (error) return showToast(error.message, 'error');
+
+        await auditLog('CONSULTA_PSICO_CANCELADA', 'agenda_psico', id, { status: 'cancelada' });
+        showToast('Consulta cancelada', 'success');
+        await this.loadList();
+    },
+
+    // ── CONSULTA PSICO ────────────────────────────────────────
+    async openCreatePsico() {
+        const [{ data: alunos }, { data: psicos }] = await Promise.all([
+            supabase.from('usuarios').select('id,nome').eq('role','aluno').eq('ativo',true).order('nome'),
+            supabase.from('usuarios').select('id,nome').eq('role','psicopedagoga').eq('ativo',true).order('nome')
+        ]);
+
+        document.getElementById('agp-aluno').innerHTML =
+            `<option value="">Selecionar aluno...</option>` +
+            (alunos?.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join('') || '');
+        document.getElementById('agp-psico').innerHTML =
+            `<option value="">Selecionar psicopedagoga...</option>` +
+            (psicos?.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('') || '');
+
+        document.getElementById('agp-data').value    = '';
+        document.getElementById('agp-data').min      = todayISO();
+        document.getElementById('agp-horario').value = '';
+        document.getElementById('agp-obs').value     = '';
+        openModal('modal-agenda-psico');
+    },
+
+    async savePsico() {
+        const alunoId  = document.getElementById('agp-aluno').value;
+        const psicoId  = document.getElementById('agp-psico').value;
+        const data     = document.getElementById('agp-data').value;
+        const horario  = document.getElementById('agp-horario').value;
+        const obs      = (document.getElementById('agp-obs').value || '').trim();
+
+        const errors = validateForm([
+            { value: alunoId, label: 'Aluno',         rules: ['required'] },
+            { value: psicoId, label: 'Psicopedagoga',  rules: ['required'] },
+            { value: data,    label: 'Data',            rules: ['required'] },
+            { value: horario, label: 'Horário',         rules: ['required'] }
+        ]);
+        if (data && data < todayISO()) errors.push('A data não pode ser no passado');
+        if (errors.length) return showToast(errors[0], 'error');
+
+        setLoading('#btn-save-agenda-psico', true);
+        try {
+            const { error } = await supabase.from('agenda_psico').insert({
+                aluno_id:   alunoId,
+                psico_id:   psicoId,
+                data,
+                horario,
+                observacoes: obs || null,
+                created_by:  AppState.userProfile.id
+            });
+            if (error) throw error;
+
+            showToast('Consulta psicopedagógica agendada', 'success');
+            closeModal('modal-agenda-psico');
+            await this.loadList();
+        } catch (err) {
+            showToast(err.message || 'Erro ao agendar', 'error');
+        } finally {
+            setLoading('#btn-save-agenda-psico', false);
+        }
     },
 
     // ── notificação de email via EmailJS ──────────────────────
