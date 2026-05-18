@@ -276,6 +276,17 @@ function validateForm(fields) {
 // ============================================================
 // UPLOAD SUPABASE STORAGE
 // ============================================================
+
+// Remove acentos, espaços e caracteres inválidos para paths do Storage (S3)
+function sanitizeStorageName(name) {
+    return name
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')   // remove diacríticos
+        .replace(/[^a-zA-Z0-9._-]/g, '_')  // substitui tudo inválido por _
+        .replace(/_+/g, '_')               // colapsa múltiplos _ consecutivos
+        .toLowerCase();
+}
+
 async function uploadFile(bucket, path, file) {
     const { data, error } = await supabase.storage
         .from(bucket)

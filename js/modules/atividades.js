@@ -187,7 +187,8 @@ Modules.Atividades = {
         try {
             let arquivoUrl = null;
             if (file) {
-                const path = `professores/${AppState.userProfile.id}/materiais/${Date.now()}-${file.name}`;
+                const safeName = sanitizeStorageName(file.name);
+                const path = `professores/${AppState.userProfile.id}/materiais/${Date.now()}-${safeName}`;
                 arquivoUrl = await uploadFile('materiais', path, file);
             }
 
