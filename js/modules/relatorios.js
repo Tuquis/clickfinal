@@ -18,7 +18,10 @@ Modules.Relatorios = {
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Relatórios de Aulas</h1>
-                ${isProf ? `<button class="btn btn-primary" onclick="Modules.Relatorios.openValidarAula()">✓ Validar Aula</button>` : ''}
+                ${isProf ? `
+                <button class="btn btn-primary" onclick="Modules.Relatorios.openValidarAula()">✓ Validar Aula</button>
+                <button class="btn btn-danger"  onclick="Modules.Relatorios.openSemAluno()" style="background:#dc2626;border-color:#dc2626;color:#fff">⚠ Lançar Aula sem Aluno</button>
+                ` : ''}
             </div>
 
             <div class="card">
@@ -67,6 +70,25 @@ Modules.Relatorios = {
                         <button class="btn btn-ghost" onclick="closeModal('modal-ver-relatorio')">Fechar</button>
                         <button class="btn btn-secondary"
                             onclick="Modules.Relatorios.exportPDF()">Exportar PDF</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: AULA SEM ALUNO -->
+            <div class="modal-overlay" id="modal-sem-aluno">
+                <div class="modal-box">
+                    <div class="modal-header">
+                        <h3 style="color:#dc2626">⚠ Lançar Aula sem Aluno</h3>
+                        <button class="modal-close" onclick="closeModal('modal-sem-aluno')">×</button>
+                    </div>
+                    <div class="modal-body" id="sem-aluno-body">
+                        <div class="loader-inline"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="closeModal('modal-sem-aluno')">Cancelar</button>
+                        <button class="btn" id="btn-confirmar-sem-aluno"
+                            style="background:#dc2626;border-color:#dc2626;color:#fff"
+                            onclick="Modules.Relatorios.salvarSemAluno()">Confirmar Lançamento</button>
                     </div>
                 </div>
             </div>
@@ -887,6 +909,106 @@ Modules.Relatorios = {
             showToast('PDF exportado', 'success');
         } catch(err) {
             showToast('Erro: ' + err.message, 'error');
+        }
+    },
+
+    // ── AULA SEM ALUNO ────────────────────────────────────────────
+
+    async openSemAluno() {
+        openModal('modal-sem-aluno');
+        var body = document.getElementById('sem-aluno-body');
+        body.innerHTML = '<div class="loader-inline"></div>';
+
+        var res = await supabase
+            .from('v_alunos_completo')
+            .select('id, nome, serie, disciplina, aulas_disponiveis')
+            .eq('ativo', true)
+            .order('nome');
+
+        var alunos = res.data || [];
+
+        body.innerHTML = `
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px 14px;margin-bottom:16px;font-size:.875rem;color:#dc2626">
+                Esta ação registra que o aluno <strong>não compareceu</strong> à aula.
+                A aula será <strong>debitada do saldo do aluno</strong> e
+                <strong>R$&nbsp;14,00 serão contabilizados</strong> no seu pagamento.
+            </div>
+            <div class="form-group">
+                <label class="form-label">Aluno que faltou *</label>
+                <select class="input" id="sem-aluno-select">
+                    <option value="">— selecione o aluno —</option>
+                    ${alunos.map(function(a) {
+                        var semSaldo = (a.aulas_disponiveis || 0) <= 0;
+                        return '<option value="' + a.id + '"' +
+                            (semSaldo ? ' disabled style="color:#bbb"' : '') + '>' +
+                            escapeHtml(a.nome) +
+                            (a.serie       ? ' · ' + escapeHtml(a.serie)      : '') +
+                            (a.disciplina  ? ' · ' + escapeHtml(a.disciplina) : '') +
+                        '</option>';
+                    }).join('')}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Observação (opcional)</label>
+                <textarea class="input textarea" id="sem-aluno-obs" rows="2"
+                    placeholder="Ex: Aluno avisou por mensagem, motivo de saúde..."></textarea>
+            </div>
+        `;
+    },
+
+    async salvarSemAluno() {
+        var alunoId = (document.getElementById('sem-aluno-select')?.value || '').trim();
+        if (!alunoId) return showToast('Selecione o aluno', 'error');
+
+        var obs = (document.getElementById('sem-aluno-obs')?.value || '').trim();
+        var profId = AppState.userProfile.id;
+
+        var btn = document.getElementById('btn-confirmar-sem-aluno');
+        if (btn) btn.disabled = true;
+        try {
+            // 1. Registrar na tabela relatorios como aula sem aluno
+            var ins = await supabase.from('relatorios').insert({
+                professor_id:        profId,
+                aluno_id:            alunoId,
+                conteudo_ministrado: 'Aula registrada — aluno não compareceu',
+                comportamento:       'regular',
+                compreensao:         'regular',
+                observacoes:         obs || null,
+                sem_aluno:           true
+            });
+            if (ins.error) throw ins.error;
+
+            // 2. Incrementar saldo_aulas_dadas e saldo_aulas_sem_aluno do professor
+            var piRes = await supabase
+                .from('professores_info')
+                .select('saldo_aulas_dadas, saldo_aulas_sem_aluno')
+                .eq('usuario_id', profId)
+                .single();
+            await supabase.from('professores_info').update({
+                saldo_aulas_dadas:      (piRes.data?.saldo_aulas_dadas      || 0) + 1,
+                saldo_aulas_sem_aluno:  (piRes.data?.saldo_aulas_sem_aluno  || 0) + 1
+            }).eq('usuario_id', profId);
+
+            // 3. Debitar saldo do aluno (igual a uma aula normal)
+            var aiRes = await supabase
+                .from('alunos_info')
+                .select('aulas_disponiveis')
+                .eq('usuario_id', alunoId)
+                .single();
+            if ((aiRes.data?.aulas_disponiveis || 0) > 0) {
+                await supabase.from('alunos_info').update({
+                    aulas_disponiveis: aiRes.data.aulas_disponiveis - 1
+                }).eq('usuario_id', alunoId);
+            }
+
+            await auditLog('AULA_SEM_ALUNO', 'relatorios', null, { alunoId });
+            showToast('Aula sem aluno registrada. Saldo do aluno decrementado.', 'success', 4000);
+            closeModal('modal-sem-aluno');
+            await this._loadList();
+        } catch(err) {
+            showToast(err.message || 'Erro ao registrar', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
 };

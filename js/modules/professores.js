@@ -41,8 +41,8 @@ Modules.Professores = {
 
         const uid = AppState.userProfile.id;
         const [{ data: rels }, { data: profInfo }] = await Promise.all([
-            supabase.from('relatorios').select('created_at').eq('professor_id', uid).order('created_at', { ascending: false }),
-            supabase.from('professores_info').select('saldo_aulas_dadas, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', uid).single()
+            supabase.from('relatorios').select('created_at, sem_aluno').eq('professor_id', uid).order('created_at', { ascending: false }),
+            supabase.from('professores_info').select('saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', uid).single()
         ]);
 
         this._relatorios = rels || [];
@@ -53,15 +53,18 @@ Modules.Professores = {
         this._mesAtual = { year: now.getFullYear(), month: now.getMonth() };
         this._profInfo  = profInfo;
 
-        const total    = profInfo?.saldo_aulas_dadas || 0;
-        const ajusteMes = _ajusteMes(profInfo, now);
-        const mesCount = this._contagemMes(now.getFullYear(), now.getMonth()) + ajusteMes;
-        const mesLabel = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        const total       = profInfo?.saldo_aulas_dadas     || 0;
+        const totalSemAl  = profInfo?.saldo_aulas_sem_aluno || 0;
+        const ajusteMes   = _ajusteMes(profInfo, now);
+        const mesCount    = this._contagemMes(now.getFullYear(), now.getMonth()) + ajusteMes;
+        const mesSemAluno = this._contagemMesSemAluno(now.getFullYear(), now.getMonth());
+        const mesLabel    = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
-        const totalGanho = total * 20;
+        // Aulas normais rendem R$20, sem aluno rendem R$14
+        const totalGanho = (total - totalSemAl) * 20 + totalSemAl * 14;
 
         document.getElementById('prof-wrap').innerHTML = `
-            <div class="stats-grid stats-grid-2" style="margin-bottom:20px">
+            <div class="stats-grid" style="margin-bottom:20px">
                 <div class="stat-card stat-purple">
                     <div class="stat-icon">📅</div>
                     <div>
@@ -74,6 +77,20 @@ Modules.Professores = {
                     <div>
                         <div class="stat-value">${total}</div>
                         <div class="stat-label">Total na plataforma</div>
+                    </div>
+                </div>
+                <div class="stat-card" style="border-left:4px solid #dc2626">
+                    <div class="stat-icon">⚠</div>
+                    <div>
+                        <div class="stat-value" style="color:#dc2626">${mesSemAluno}</div>
+                        <div class="stat-label">Aulas sem aluno em ${mesLabel}</div>
+                    </div>
+                </div>
+                <div class="stat-card" style="border-left:4px solid #dc2626">
+                    <div class="stat-icon">⚠</div>
+                    <div>
+                        <div class="stat-value" style="color:#dc2626">${totalSemAl}</div>
+                        <div class="stat-label">Aulas sem aluno no total</div>
                     </div>
                 </div>
             </div>
@@ -157,8 +174,8 @@ Modules.Professores = {
             { data: rels }
         ] = await Promise.all([
             supabase.from('usuarios').select('id, nome, email, ativo').eq('role', 'professor').order('nome'),
-            supabase.from('professores_info').select('usuario_id, materia, chave_pix, saldo_aulas_dadas, ajuste_aulas_mes, ajuste_mes_ref'),
-            supabase.from('relatorios').select('professor_id, created_at')
+            supabase.from('professores_info').select('usuario_id, materia, chave_pix, saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref'),
+            supabase.from('relatorios').select('professor_id, created_at, sem_aluno')
         ]);
 
         if (error) {
@@ -178,20 +195,24 @@ Modules.Professores = {
 
         const now = new Date();
         const cMes = {};
+        const cMesSemAluno = {};
         (rels || []).forEach(r => {
             const pid = r.professor_id;
             const d = new Date(r.created_at);
             if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
                 cMes[pid] = (cMes[pid] || 0) + 1;
+                if (r.sem_aluno) cMesSemAluno[pid] = (cMesSemAluno[pid] || 0) + 1;
             }
         });
 
         this._todosProfs = profs.map(p => ({
             ...p,
-            total:     piMap[p.id]?.saldo_aulas_dadas || 0,
-            mes:       (cMes[p.id] || 0) + _ajusteMes(piMap[p.id], now),
-            materia:   piMap[p.id]?.materia   || '—',
-            chave_pix: piMap[p.id]?.chave_pix || '—'
+            total:          piMap[p.id]?.saldo_aulas_dadas     || 0,
+            totalSemAluno:  piMap[p.id]?.saldo_aulas_sem_aluno || 0,
+            mes:            (cMes[p.id] || 0) + _ajusteMes(piMap[p.id], now),
+            mesSemAluno:    cMesSemAluno[p.id] || 0,
+            materia:        piMap[p.id]?.materia   || '—',
+            chave_pix:      piMap[p.id]?.chave_pix || '—'
         }));
 
         this._renderTabela(this._todosProfs, now);
@@ -225,6 +246,7 @@ Modules.Professores = {
                             <th>Matéria</th>
                             <th>Chave PIX</th>
                             <th>${mesLabel}</th>
+                            <th>Sem aluno (${mesLabel})</th>
                             <th>Total</th>
                             <th></th>
                         </tr>
@@ -249,6 +271,10 @@ Modules.Professores = {
                                     }
                                 </td>
                                 <td><span class="metric-mes">${p.mes}</span></td>
+                                <td>${p.mesSemAluno > 0
+                                    ? `<span style="color:#dc2626;font-weight:600">${p.mesSemAluno}</span>`
+                                    : `<span style="color:var(--color-text-3)">0</span>`
+                                }</td>
                                 <td><span class="metric-total">${p.total}</span></td>
                                 <td>
                                     <button class="btn btn-ghost btn-sm"
@@ -284,8 +310,8 @@ Modules.Professores = {
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         const [{ data }, { data: pi }] = await Promise.all([
-            supabase.from('relatorios').select('created_at').eq('professor_id', profId).order('created_at', { ascending: false }),
-            supabase.from('professores_info').select('saldo_aulas_dadas, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', profId).single()
+            supabase.from('relatorios').select('created_at, sem_aluno').eq('professor_id', profId).order('created_at', { ascending: false }),
+            supabase.from('professores_info').select('saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', profId).single()
         ]);
 
         this._profId     = profId;
@@ -296,7 +322,8 @@ Modules.Professores = {
         this._mesAtual = { year: now.getFullYear(), month: now.getMonth() };
         this._profInfo  = pi;
 
-        const totalReal = pi?.saldo_aulas_dadas || 0;
+        const totalReal   = pi?.saldo_aulas_dadas     || 0;
+        const totalSemAl  = pi?.saldo_aulas_sem_aluno || 0;
 
         if (statsEl) {
             const mesCount = this._contagemMes(now.getFullYear(), now.getMonth()) + _ajusteMes(pi, now);
@@ -304,7 +331,7 @@ Modules.Professores = {
             statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${totalReal} no total`;
         }
 
-        const totalGanho = totalReal * 20;
+        const totalGanho = (totalReal - totalSemAl) * 20 + totalSemAl * 14;
         const ganhoEl = document.getElementById('prof-admin-ganho');
         if (ganhoEl) {
             ganhoEl.textContent = fmt.currency(totalGanho) + ' total';
@@ -318,7 +345,7 @@ Modules.Professores = {
         const chartTotal = document.getElementById('prof-chart-total');
         if (chartCard) {
             chartCard.style.display = 'block';
-            if (chartTotal) chartTotal.textContent = fmt.currency(totalReal * 20) + ' total';
+            if (chartTotal) chartTotal.textContent = fmt.currency((totalReal - totalSemAl) * 20 + totalSemAl * 14) + ' total';
             this._renderChart('prof-ganhos-chart-admin', now.getFullYear());
         }
     },
@@ -349,6 +376,13 @@ Modules.Professores = {
         return this._relatorios.filter(r => {
             const d = new Date(r.created_at);
             return d.getFullYear() === year && d.getMonth() === month;
+        }).length;
+    },
+
+    _contagemMesSemAluno(year, month) {
+        return this._relatorios.filter(r => {
+            const d = new Date(r.created_at);
+            return r.sem_aluno && d.getFullYear() === year && d.getMonth() === month;
         }).length;
     },
 
@@ -438,18 +472,18 @@ Modules.Professores = {
         const now = new Date();
         const mesAtual = year === now.getFullYear() ? now.getMonth() : 11;
 
-        // Conta aulas por mês só até o mês atual do ano
-        const contagemMes = Array(12).fill(0);
+        // Conta ganho por mês (aulas normais R$20, sem aluno R$14)
+        const ganhoMes = Array(12).fill(0);
         this._relatorios.forEach(r => {
             const d = new Date(r.created_at);
-            if (d.getFullYear() === year) contagemMes[d.getMonth()]++;
+            if (d.getFullYear() === year) ganhoMes[d.getMonth()] += r.sem_aluno ? 14 : 20;
         });
 
         // Acumula ganhos mês a mês (linha sobe continuamente)
         const labels = MESES_SHORT.slice(0, mesAtual + 1);
         let acc = 0;
-        const cumulativo = contagemMes.slice(0, mesAtual + 1).map(c => {
-            acc += c * 20;
+        const cumulativo = ganhoMes.slice(0, mesAtual + 1).map(g => {
+            acc += g;
             return acc;
         });
 
