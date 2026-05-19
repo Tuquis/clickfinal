@@ -121,6 +121,17 @@ Modules.Usuarios = {
                                     placeholder="https://meet.google.com/..." />
                             </div>
                         </div>
+
+                        <!-- Campos extras para PSICOPEDAGOGA -->
+                        <div id="u-psico-fields" style="display:none">
+                            <hr class="divider" />
+                            <p class="form-section-title">Informações da Psicopedagoga</p>
+                            <div class="form-group">
+                                <label class="form-label">Link Google Meet (permanente)</label>
+                                <input type="url" class="input" id="u-psico-meet"
+                                    placeholder="https://meet.google.com/..." />
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-ghost" onclick="closeModal('modal-usuario')">Cancelar</button>
@@ -179,8 +190,9 @@ Modules.Usuarios = {
     },
 
     _onRoleChange(v) {
-        document.getElementById('u-aluno-fields').style.display     = v === 'aluno'     ? 'block' : 'none';
-        document.getElementById('u-professor-fields').style.display = v === 'professor' ? 'block' : 'none';
+        document.getElementById('u-aluno-fields').style.display     = v === 'aluno'         ? 'block' : 'none';
+        document.getElementById('u-professor-fields').style.display = v === 'professor'     ? 'block' : 'none';
+        document.getElementById('u-psico-fields').style.display     = v === 'psicopedagoga' ? 'block' : 'none';
     },
 
     _toggleSenha() {
@@ -283,8 +295,9 @@ Modules.Usuarios = {
         document.getElementById('u-senha-group').style.display = 'block';
         document.getElementById('u-role').value = '';
         document.getElementById('u-role').disabled = false;
-        document.getElementById('u-aluno-fields').style.display = 'none';
+        document.getElementById('u-aluno-fields').style.display     = 'none';
         document.getElementById('u-professor-fields').style.display = 'none';
+        document.getElementById('u-psico-fields').style.display     = 'none';
         ['u-serie','u-disciplina','u-responsavel','u-telefone'].forEach(function(id) {
             document.getElementById(id).value = '';
         });
@@ -292,6 +305,7 @@ Modules.Usuarios = {
         document.getElementById('u-materia').value = '';
         document.getElementById('u-pix').value = '';
         document.getElementById('u-link-meet').value = '';
+        document.getElementById('u-psico-meet').value = '';
         openModal('modal-usuario');
     },
 
@@ -312,6 +326,7 @@ Modules.Usuarios = {
 
         document.getElementById('u-aluno-fields').style.display     = 'none';
         document.getElementById('u-professor-fields').style.display = 'none';
+        document.getElementById('u-psico-fields').style.display     = 'none';
 
         if (u.role === 'aluno') {
             document.getElementById('u-aluno-fields').style.display = 'block';
@@ -332,6 +347,12 @@ Modules.Usuarios = {
                 document.getElementById('u-materia').value    = pi.materia   || '';
                 document.getElementById('u-pix').value        = pi.chave_pix || '';
                 document.getElementById('u-link-meet').value  = pi.link_meet || '';
+            }
+        } else if (u.role === 'psicopedagoga') {
+            document.getElementById('u-psico-fields').style.display = 'block';
+            var psRes = await supabase.from('psico_info').select('link_meet').eq('usuario_id', id).single();
+            if (psRes.data) {
+                document.getElementById('u-psico-meet').value = psRes.data.link_meet || '';
             }
         }
         openModal('modal-usuario');
@@ -388,6 +409,7 @@ Modules.Usuarios = {
 
         var alunoData = null;
         var profData  = null;
+        var psicoData = null;
 
         if (role === 'aluno') {
             var serie      = document.getElementById('u-serie').value.trim();
@@ -412,6 +434,11 @@ Modules.Usuarios = {
             profData = { materia, chave_pix: chavePix || null, link_meet: linkMeet || null };
         }
 
+        if (role === 'psicopedagoga') {
+            var psicoMeet = document.getElementById('u-psico-meet').value.trim();
+            psicoData = { link_meet: psicoMeet || null };
+        }
+
         if (errors.length) return showToast(errors[0], 'error');
 
         setLoading('#btn-save-usuario', true);
@@ -429,6 +456,11 @@ Modules.Usuarios = {
                 if (role === 'professor' && profData) {
                     var updPi = await supabase.from('professores_info').update(profData).eq('usuario_id', id);
                     if (updPi.error) throw updPi.error;
+                }
+                if (role === 'psicopedagoga' && psicoData) {
+                    var upsPs = await supabase.from('psico_info')
+                        .upsert({ usuario_id: id, ...psicoData }, { onConflict: 'usuario_id' });
+                    if (upsPs.error) throw upsPs.error;
                 }
 
                 await auditLog('USUARIO_ATUALIZADO', 'usuarios', id, { nome });
@@ -465,6 +497,11 @@ Modules.Usuarios = {
                         materia:           profData ? profData.materia    : null,
                         chave_pix:         profData ? profData.chave_pix  : null,
                         link_meet:         profData ? profData.link_meet  : null
+                    });
+                } else if (role === 'psicopedagoga') {
+                    await supabase.from('psico_info').insert({
+                        usuario_id: newUser.id,
+                        link_meet:  psicoData ? psicoData.link_meet : null
                     });
                 }
 

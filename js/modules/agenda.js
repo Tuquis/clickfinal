@@ -256,6 +256,10 @@ Modules.Agenda = {
                             </div>
                         </div>
                         <div class="form-group">
+                            <label class="form-label">Link Google Meet</label>
+                            <input type="url" class="input" id="agp-meet" placeholder="https://meet.google.com/..." />
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Observações</label>
                             <textarea class="input textarea" id="agp-obs" rows="2"
                                 placeholder="Observações sobre o agendamento (opcional)"></textarea>
@@ -398,7 +402,7 @@ Modules.Agenda = {
         const today = todayISO();
         let query = supabase
             .from('agenda_psico')
-            .select(`id, data, horario, observacoes, status,
+            .select(`id, data, horario, observacoes, status, link_meet,
                 aluno:usuarios!agenda_psico_aluno_id_fkey(nome)`)
             .eq('psico_id', uid)
             .order('data', { ascending: !isHistorico })
@@ -429,7 +433,7 @@ Modules.Agenda = {
             <table class="table">
                 <thead><tr>
                     <th>Data</th><th>Horário</th><th>Aluno</th>
-                    <th>Observações</th><th>Status</th>
+                    <th>Observações</th><th>Status</th><th>Meet</th>
                 </tr></thead>
                 <tbody>
                     ${data.map(a => `
@@ -437,8 +441,9 @@ Modules.Agenda = {
                             <td>${fmt.date(a.data)}</td>
                             <td>${fmt.time(a.horario)}</td>
                             <td>${escapeHtml(a.aluno?.nome || '—')}</td>
-                            <td style="font-size:.825rem;max-width:200px">${a.observacoes ? escapeHtml(a.observacoes) : '—'}</td>
+                            <td style="font-size:.825rem;max-width:180px">${a.observacoes ? escapeHtml(a.observacoes) : '—'}</td>
                             <td>${badge(_ST[a.status] || a.status, _SC[a.status] || 'badge-secondary')}</td>
+                            <td>${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-ghost btn-sm">📹 Meet</a>` : '—'}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -463,15 +468,18 @@ Modules.Agenda = {
         if (role === 'professor') query = query.eq('professor_id', uid);
         if (role === 'aluno')     query = query.eq('aluno_id', uid);
 
-        // Admin: também carrega consultas psicopedagógicas agendadas
-        const psicoQuery = (role === 'admin')
+        // Admin e Aluno: também carrega consultas psicopedagógicas agendadas
+        const needsPsicoQuery = role === 'admin' || role === 'aluno';
+        let psicoQ = needsPsicoQuery
             ? supabase.from('agenda_psico')
-                .select(`id, data, horario, status, observacoes,
+                .select(`id, data, horario, status, observacoes, link_meet,
                     aluno:usuarios!agenda_psico_aluno_id_fkey(nome),
                     psico:usuarios!agenda_psico_psico_id_fkey(nome)`)
                 .gte('data', startISO).lte('data', endISO).eq('status', 'agendada')
                 .order('horario')
             : Promise.resolve({ data: [] });
+        if (role === 'aluno') psicoQ = psicoQ.eq('aluno_id', uid);
+        const psicoQuery = psicoQ;
 
         const [{ data, error }, { data: psicoData }] = await Promise.all([query, psicoQuery]);
         if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
@@ -526,6 +534,7 @@ Modules.Agenda = {
                                                     <div class="cal-event-aluno">${escapeHtml(a.aluno?.nome || '—')}</div>
                                                     <div class="cal-event-prof">🧠 ${escapeHtml(a.psico?.nome || '—')}</div>
                                                     <div class="cal-event-subject" style="font-size:.7rem;color:#7c3aed">Consulta Psicopedagógica</div>
+                                                    ${a.link_meet ? `<div class="cal-event-meet">📹 Meet</div>` : ''}
                                                 </div>`;
                                         }
                                         const colorIdx = this._profColor(a.professor_id);
@@ -585,10 +594,36 @@ Modules.Agenda = {
         const from = (this._page - 1) * APP_CONFIG.paginationSize;
         query = query.range(from, from + APP_CONFIG.paginationSize - 1);
 
-        const { data, error, count } = await query;
+        // Aluno: carregar também consultas psicopedagógicas em paralelo
+        let psicoPromise = Promise.resolve({ data: [] });
+        if (role === 'aluno') {
+            let pq = supabase.from('agenda_psico')
+                .select(`id, data, horario, status, link_meet, observacoes,
+                    psico:usuarios!agenda_psico_psico_id_fkey(nome)`)
+                .eq('aluno_id', uid)
+                .order('data', { ascending: !isHistorico })
+                .order('horario');
+            if (isHistorico) {
+                pq = pq.or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`);
+                if (this._filters.status) pq = pq.eq('status', this._filters.status);
+            } else {
+                pq = pq.eq('status', 'agendada').gte('data', todayISO());
+            }
+            if (this._filters.data) pq = pq.eq('data', this._filters.data);
+            psicoPromise = pq.limit(20);
+        }
+
+        const [{ data, error, count }, { data: psicoData }] = await Promise.all([query, psicoPromise]);
         if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
 
-        let displayData = data || [];
+        // Mesclar consultas psico com flag _psico
+        let displayData = [...(data || []), ...(psicoData || []).map(p => ({ ...p, _psico: true }))];
+        // Re-ordenar por data+horário após merge
+        displayData.sort((a, b) => {
+            const cmp = a.data.localeCompare(b.data);
+            if (cmp !== 0) return isHistorico ? -cmp : cmp;
+            return isHistorico ? -(a.horario||'').localeCompare(b.horario||'') : (a.horario||'').localeCompare(b.horario||'');
+        });
         if (!isHistorico) {
             const now = new Date();
             displayData = displayData.filter(a => {
@@ -631,6 +666,27 @@ Modules.Agenda = {
                                 </div>
                                 <div class="agenda-date-aulas">
                                     ${aulas.map(a => {
+                                        if (a._psico) {
+                                            const _ST2 = { agendada: 'Agendada', realizada: 'Realizada', cancelada: 'Cancelada' };
+                                            const _SC2 = { agendada: 'badge-info', realizada: 'badge-success', cancelada: 'badge-secondary' };
+                                            return `
+                                                <div class="agenda-aula-card" style="border-left:3px solid #7c3aed;background:#faf5ff;">
+                                                    <div class="agenda-aula-time">${fmt.time(a.horario)}</div>
+                                                    <div class="agenda-aula-info">
+                                                        <div class="agenda-aula-top">
+                                                            <span class="agenda-aula-aluno">🧠 Consulta Psicopedagógica</span>
+                                                            <span class="agenda-aula-prof">com ${escapeHtml(a.psico?.nome || '—')}</span>
+                                                            ${badge(_ST2[a.status] || a.status, _SC2[a.status] || 'badge-secondary')}
+                                                        </div>
+                                                        ${a.observacoes ? `<div class="agenda-aula-disc" style="color:#7c3aed">${escapeHtml(a.observacoes)}</div>` : ''}
+                                                    </div>
+                                                    <div class="agenda-aula-actions">
+                                                        ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-primary btn-sm">📹 Meet</a>` : ''}
+                                                        <button class="btn btn-ghost btn-sm" onclick="Modules.Agenda.viewDetailsPsico('${a.id}')">Detalhes</button>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }
                                         const s          = fmt.status_aula(a.status);
                                         const colorIdx   = this._profColor(a.professor_id);
                                         return `
@@ -901,7 +957,8 @@ Modules.Agenda = {
 
         const { data: a, error } = await supabase
             .from('agenda_psico')
-            .select(`*, aluno:usuarios!agenda_psico_aluno_id_fkey(nome),
+            .select(`id, data, horario, status, observacoes, link_meet,
+                        aluno:usuarios!agenda_psico_aluno_id_fkey(nome),
                         psico:usuarios!agenda_psico_psico_id_fkey(nome)`)
             .eq('id', id).single();
 
@@ -937,6 +994,11 @@ Modules.Agenda = {
                 <div class="form-label" style="margin-bottom:6px">Status</div>
                 ${badge(st.label, st.cls)}
             </div>
+            ${a.link_meet ? `
+            <div>
+                <div class="form-label" style="margin-bottom:6px">Link Google Meet</div>
+                <a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-primary btn-sm">📹 Entrar na reunião</a>
+            </div>` : ''}
             ${a.observacoes ? `
             <div>
                 <div class="form-label" style="margin-bottom:6px">Observações</div>
@@ -986,7 +1048,17 @@ Modules.Agenda = {
         document.getElementById('agp-data').value    = '';
         document.getElementById('agp-data').min      = todayISO();
         document.getElementById('agp-horario').value = '';
+        document.getElementById('agp-meet').value    = '';
         document.getElementById('agp-obs').value     = '';
+
+        // Auto-preencher meet ao selecionar psico
+        document.getElementById('agp-psico').addEventListener('change', async function(e) {
+            const psicoId = e.target.value;
+            if (!psicoId) return;
+            const { data: pi } = await supabase.from('psico_info').select('link_meet').eq('usuario_id', psicoId).single();
+            if (pi?.link_meet) document.getElementById('agp-meet').value = pi.link_meet;
+        });
+
         openModal('modal-agenda-psico');
     },
 
@@ -995,6 +1067,7 @@ Modules.Agenda = {
         const psicoId  = document.getElementById('agp-psico').value;
         const data     = document.getElementById('agp-data').value;
         const horario  = document.getElementById('agp-horario').value;
+        const meet     = (document.getElementById('agp-meet').value || '').trim();
         const obs      = (document.getElementById('agp-obs').value || '').trim();
 
         const errors = validateForm([
@@ -1013,6 +1086,7 @@ Modules.Agenda = {
                 psico_id:   psicoId,
                 data,
                 horario,
+                link_meet:   meet || null,
                 observacoes: obs || null,
                 created_by:  AppState.userProfile.id
             });
