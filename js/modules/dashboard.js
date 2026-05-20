@@ -116,7 +116,7 @@ Modules.Dashboard = {
         const id = AppState.userProfile.id;
 
         const [{ data: hoje }, { data: semana }, { data: profInfo }, notificacoes] = await Promise.all([
-            supabase.from('v_agenda_completa').select('*').eq('professor_id', id).eq('data', todayISO()).order('horario'),
+            supabase.from('v_agenda_completa').select('*').eq('professor_id', id).eq('data', todayISO()).eq('status', 'agendada').order('horario'),
             supabase.from('v_agenda_completa').select('*').eq('professor_id', id).gte('data', todayISO()).eq('status', 'agendada').order('data').limit(10),
             supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', id).single(),
             Modules.Dashboard._fetchMensagensNaoLidas(id)
