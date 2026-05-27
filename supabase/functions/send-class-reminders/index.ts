@@ -91,11 +91,15 @@ Deno.serve(async (req) => {
   const { time: h28 } = toSaoPaulo(new Date(now.getTime() + 28 * 60_000))
   const { time: h32 } = toSaoPaulo(new Date(now.getTime() + 32 * 60_000))
 
-  // Janela WhatsApp aluno: 23–27 min (alvo 25 min)
+  // Janela WhatsApp aluno 25 min: 23–27 min
   const { time: h23 } = toSaoPaulo(new Date(now.getTime() + 23 * 60_000))
   const { time: h27 } = toSaoPaulo(new Date(now.getTime() + 27 * 60_000))
 
-  console.log(`Rodando — hoje: ${today} | email: ${h28}–${h32} | zap: ${h23}–${h27}`)
+  // Janela WhatsApp aluno 10 min: 8–12 min
+  const { time: h8  } = toSaoPaulo(new Date(now.getTime() +  8 * 60_000))
+  const { time: h12 } = toSaoPaulo(new Date(now.getTime() + 12 * 60_000))
+
+  console.log(`Rodando — hoje: ${today} | email: ${h28}–${h32} | zap25: ${h23}–${h27} | zap10: ${h8}–${h12}`)
 
   // ── Busca aulas para EMAIL (professor) ────────────────────────
   const { data: aulasEmail } = await db
@@ -107,7 +111,7 @@ Deno.serve(async (req) => {
     .gte('horario', h28)
     .lte('horario', h32)
 
-  // ── Busca aulas para WHATSAPP (aluno) ─────────────────────────
+  // ── Busca aulas para WHATSAPP 25 min (aluno) ─────────────────
   const { data: aulasZap } = await db
     .from('agenda_meet')
     .select('id, data, horario, link_meet, professor_id, aluno_id')
@@ -116,6 +120,16 @@ Deno.serve(async (req) => {
     .eq('lembrete_whatsapp_enviado', false)
     .gte('horario', h23)
     .lte('horario', h27)
+
+  // ── Busca aulas para WHATSAPP 10 min (aluno) ─────────────────
+  const { data: aulasZap10 } = await db
+    .from('agenda_meet')
+    .select('id, data, horario, link_meet, professor_id, aluno_id')
+    .eq('data', today)
+    .eq('status', 'agendada')
+    .eq('lembrete_whatsapp_10min_enviado', false)
+    .gte('horario', h8)
+    .lte('horario', h12)
 
   const results: any[] = []
 
@@ -218,12 +232,56 @@ Deno.serve(async (req) => {
     }
   }
 
-  const emailEnviados = results.filter(r => r.tipo === 'email'     && r.status === 'enviado').length
-  const zapEnviados   = results.filter(r => r.tipo === 'whatsapp'  && r.status === 'enviado').length
-  console.log(`Concluído — emails: ${emailEnviados}, whatsapp: ${zapEnviados}`)
+  // ── Envia WHATSAPP 10 min (aluno) ────────────────────────────
+  for (const aula of (aulasZap10 || [])) {
+    try {
+      const [{ data: aluno }, { data: alunoInfo }, { data: prof }] = await Promise.all([
+        db.from('usuarios').select('nome').eq('id', aula.aluno_id).single(),
+        db.from('alunos_info').select('telefone_aluno').eq('usuario_id', aula.aluno_id).single(),
+        db.from('usuarios').select('nome').eq('id', aula.professor_id).single()
+      ])
+
+      const telefone = alunoInfo?.telefone_aluno
+      if (!telefone) {
+        await db.from('agenda_meet').update({ lembrete_whatsapp_10min_enviado: true }).eq('id', aula.id)
+        results.push({ id: aula.id, tipo: 'whatsapp10', status: 'sem_telefone' })
+        continue
+      }
+
+      const horarioFmt = (aula.horario ?? '').substring(0, 5)
+      const nomeAluno  = aluno?.nome ?? 'aluno'
+      const nomeProf   = prof?.nome  ?? 'seu professor'
+
+      let mensagem =
+        `⚡ ${nomeAluno}, sua aula começa em *10 minutos* (às ${horarioFmt})!\n\n` +
+        `👨‍🏫 Professor(a): *${nomeProf}*`
+
+      if (aula.link_meet) {
+        mensagem += `\n\n🔗 Entre agora:\n${aula.link_meet}`
+      }
+
+      mensagem += `\n\n_Click do Saber_`
+
+      await enviarWhatsApp(telefone, mensagem)
+
+      await db.from('agenda_meet').update({ lembrete_whatsapp_10min_enviado: true }).eq('id', aula.id)
+      console.log(`WhatsApp 10min enviado — ${normalizarTelefone(telefone)} — aula ${aula.id}`)
+      results.push({ id: aula.id, tipo: 'whatsapp10', status: 'enviado', para: normalizarTelefone(telefone) })
+
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`Erro WhatsApp 10min aula ${aula.id}:`, msg)
+      results.push({ id: aula.id, tipo: 'whatsapp10', status: 'erro', erro: msg })
+    }
+  }
+
+  const emailEnviados  = results.filter(r => r.tipo === 'email'      && r.status === 'enviado').length
+  const zapEnviados    = results.filter(r => r.tipo === 'whatsapp'   && r.status === 'enviado').length
+  const zap10Enviados  = results.filter(r => r.tipo === 'whatsapp10' && r.status === 'enviado').length
+  console.log(`Concluído — emails: ${emailEnviados}, whatsapp25: ${zapEnviados}, whatsapp10: ${zap10Enviados}`)
 
   return new Response(
-    JSON.stringify({ emailEnviados, zapEnviados, total: results.length, results }),
+    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, total: results.length, results }),
     { headers: { 'Content-Type': 'application/json' } }
   )
 })
