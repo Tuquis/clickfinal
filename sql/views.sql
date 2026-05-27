@@ -59,7 +59,8 @@ SELECT
     ai.disciplina,
     ai.responsavel,
     ai.telefone,
-    ai.aulas_disponiveis
+    ai.aulas_disponiveis,
+    ai.telefone_aluno
 FROM public.usuarios u
 LEFT JOIN public.alunos_info ai ON ai.usuario_id = u.id
 WHERE u.role = 'aluno';

@@ -91,13 +91,21 @@ Modules.Usuarios = {
                                     <input type="text" class="input" id="u-responsavel" placeholder="Nome do responsável" />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">Telefone *</label>
+                                    <label class="form-label">Telefone do Responsável *</label>
                                     <input type="tel" class="input" id="u-telefone" placeholder="(11) 99999-9999" />
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Aulas Disponíveis</label>
-                                <input type="number" class="input" id="u-aulas" value="0" min="0" />
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">WhatsApp do Aluno
+                                        <span style="font-size:.75rem;color:var(--color-text-3);font-weight:400"> — para notificações</span>
+                                    </label>
+                                    <input type="tel" class="input" id="u-telefone-aluno" placeholder="(11) 99999-9999" />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Aulas Disponíveis</label>
+                                    <input type="number" class="input" id="u-aulas" value="0" min="0" />
+                                </div>
                             </div>
                         </div>
 
@@ -298,7 +306,7 @@ Modules.Usuarios = {
         document.getElementById('u-aluno-fields').style.display     = 'none';
         document.getElementById('u-professor-fields').style.display = 'none';
         document.getElementById('u-psico-fields').style.display     = 'none';
-        ['u-serie','u-disciplina','u-responsavel','u-telefone'].forEach(function(id) {
+        ['u-serie','u-disciplina','u-responsavel','u-telefone','u-telefone-aluno'].forEach(function(id) {
             document.getElementById(id).value = '';
         });
         document.getElementById('u-aulas').value = '0';
@@ -333,11 +341,12 @@ Modules.Usuarios = {
             var aiRes = await supabase.from('alunos_info').select('*').eq('usuario_id', id).single();
             var ai = aiRes.data;
             if (ai) {
-                document.getElementById('u-serie').value        = ai.serie;
-                document.getElementById('u-disciplina').value   = ai.disciplina;
-                document.getElementById('u-responsavel').value  = ai.responsavel;
-                document.getElementById('u-telefone').value     = ai.telefone;
-                document.getElementById('u-aulas').value        = ai.aulas_disponiveis;
+                document.getElementById('u-serie').value          = ai.serie          || '';
+                document.getElementById('u-disciplina').value     = ai.disciplina      || '';
+                document.getElementById('u-responsavel').value    = ai.responsavel     || '';
+                document.getElementById('u-telefone').value       = ai.telefone        || '';
+                document.getElementById('u-telefone-aluno').value = ai.telefone_aluno  || '';
+                document.getElementById('u-aulas').value          = ai.aulas_disponiveis;
             }
         } else if (u.role === 'professor') {
             document.getElementById('u-professor-fields').style.display = 'block';
@@ -412,16 +421,18 @@ Modules.Usuarios = {
         var psicoData = null;
 
         if (role === 'aluno') {
-            var serie      = document.getElementById('u-serie').value.trim();
-            var disciplina = document.getElementById('u-disciplina').value.trim();
-            var responsavel= document.getElementById('u-responsavel').value.trim();
-            var telefone   = document.getElementById('u-telefone').value.trim();
+            var serie          = document.getElementById('u-serie').value.trim();
+            var disciplina     = document.getElementById('u-disciplina').value.trim();
+            var responsavel    = document.getElementById('u-responsavel').value.trim();
+            var telefone       = document.getElementById('u-telefone').value.trim();
+            var telefoneAluno  = document.getElementById('u-telefone-aluno').value.trim();
             if (!serie)       errors.push('Série é obrigatória');
             if (!disciplina)  errors.push('Disciplina é obrigatória');
             if (!responsavel) errors.push('Responsável é obrigatório');
-            if (!telefone)    errors.push('Telefone é obrigatório');
+            if (!telefone)    errors.push('Telefone do responsável é obrigatório');
             alunoData = {
                 serie, disciplina, responsavel, telefone,
+                telefone_aluno: telefoneAluno || null,
                 aulas_disponiveis: parseInt(document.getElementById('u-aulas').value) || 0
             };
         }

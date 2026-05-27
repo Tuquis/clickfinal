@@ -2558,6 +2558,25 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     white-space: nowrap;
 }
 
+/* Badge de notificação sobre botões (ex: respostas não lidas) */
+.notif-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #ef4444;
+    color: #fff;
+    font-size: .65rem;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    pointer-events: none;
+}
+
 /* ============================================================
    CHAT — Anexos (arquivos e imagens)
    ============================================================ */

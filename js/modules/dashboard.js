@@ -115,11 +115,18 @@ Modules.Dashboard = {
     async _professor() {
         const id = AppState.userProfile.id;
 
-        const [{ data: hoje }, { data: semana }, { data: profInfo }, notificacoes] = await Promise.all([
+        const [{ data: hoje }, { data: semana }, { data: profInfo }, notificacoes, { data: respostasNovas }] = await Promise.all([
             supabase.from('v_agenda_completa').select('*').eq('professor_id', id).eq('data', todayISO()).eq('status', 'agendada').order('horario'),
             supabase.from('v_agenda_completa').select('*').eq('professor_id', id).gte('data', todayISO()).eq('status', 'agendada').order('data').limit(10),
             supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', id).single(),
-            Modules.Dashboard._fetchMensagensNaoLidas(id)
+            Modules.Dashboard._fetchMensagensNaoLidas(id),
+            supabase.from('respostas_atividades')
+                .select(`id, arquivo_url, arquivo_nome, created_at,
+                    aluno:usuarios!respostas_atividades_aluno_id_fkey(nome),
+                    atividade:atividades!respostas_atividades_atividade_id_fkey(id, titulo)`)
+                .eq('visualizado', false)
+                .order('created_at', { ascending: false })
+                .limit(10)
         ]);
 
         const now = new Date();
@@ -131,6 +138,7 @@ Modules.Dashboard = {
             </div>
 
             ${Modules.Dashboard._notificacoesHtml(notificacoes)}
+            ${Modules.Dashboard._respostasHtml(respostasNovas)}
 
             <div class="stats-grid stats-grid-3">
                 ${Modules.Dashboard._statCard('Aulas Hoje', hoje?.length || 0, '📅', 'stat-blue')}
@@ -437,6 +445,44 @@ Modules.Dashboard = {
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="notif-msg-dot"></span>
                         <h3>Novas mensagens para você</h3>
+                    </div>
+                </div>
+                <div class="notif-msg-list">
+                    ${itens}
+                </div>
+            </div>
+        `;
+    },
+
+    _respostasHtml(respostas) {
+        if (!respostas || respostas.length === 0) return '';
+
+        const itens = respostas.map(r => `
+            <div class="notif-msg-item">
+                <div class="notif-msg-avatar">📝</div>
+                <div class="notif-msg-body">
+                    <div class="notif-msg-de">
+                        <strong>${escapeHtml(r.aluno?.nome || '—')}</strong>
+                        <span class="notif-msg-count">enviou uma resposta</span>
+                    </div>
+                    <div class="notif-msg-trecho">
+                        Atividade: <em>${escapeHtml(r.atividade?.titulo || '—')}</em>
+                    </div>
+                    <div class="notif-msg-aula">${fmt.date(r.created_at)}</div>
+                </div>
+                <button class="btn btn-primary btn-sm notif-msg-btn"
+                    onclick="Router.navigate('atividades')">
+                    Clique para ver
+                </button>
+            </div>
+        `).join('');
+
+        return `
+            <div class="card notif-msg-card" style="border-left:3px solid #f59e0b;">
+                <div class="card-header notif-msg-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="notif-msg-dot" style="background:#f59e0b"></span>
+                        <h3>Respostas de atividades não lidas</h3>
                     </div>
                 </div>
                 <div class="notif-msg-list">

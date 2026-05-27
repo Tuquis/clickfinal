@@ -181,7 +181,8 @@ Modules.Alunos = {
                     <div class="info-item"><span class="info-label">Série</span><span>${escapeHtml(aluno?.serie || '—')}</span></div>
                     <div class="info-item"><span class="info-label">Disciplina</span><span>${escapeHtml(aluno?.disciplina || '—')}</span></div>
                     <div class="info-item"><span class="info-label">Responsável</span><span>${escapeHtml(aluno?.responsavel || '—')}</span></div>
-                    <div class="info-item"><span class="info-label">Telefone</span><span>${escapeHtml(aluno?.telefone || '—')}</span></div>
+                    <div class="info-item"><span class="info-label">Tel. Responsável</span><span>${escapeHtml(aluno?.telefone || '—')}</span></div>
+                    <div class="info-item"><span class="info-label">WhatsApp Aluno</span><span>${aluno?.telefone_aluno ? `📱 ${escapeHtml(aluno.telefone_aluno)}` : '—'}</span></div>
                     ${Auth.can('admin') ? `
                     <div class="info-item"><span class="info-label">Aulas Disponíveis</span>
                         <span class="aulas-badge ${aluno?.aulas_disponiveis === 0 ? 'aulas-zero' : ''}">${aluno?.aulas_disponiveis || 0}</span>
