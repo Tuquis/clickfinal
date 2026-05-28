@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 
   const db  = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   const now = new Date()
-  const { date: today } = toSaoPaulo(now)
+  const { date: today, time: nowTimeSP } = toSaoPaulo(now)
 
   // Janela email + WhatsApp professor: 28–32 min (alvo 30 min)
   const { time: h28 } = toSaoPaulo(new Date(now.getTime() + 28 * 60_000))
@@ -99,7 +99,10 @@ Deno.serve(async (req) => {
   const { time: h8  } = toSaoPaulo(new Date(now.getTime() +  8 * 60_000))
   const { time: h12 } = toSaoPaulo(new Date(now.getTime() + 12 * 60_000))
 
-  console.log(`Rodando — hoje: ${today} | email+zapProf: ${h28}–${h32} | zap25: ${h23}–${h27} | zap10: ${h8}–${h12}`)
+  // Janela bom dia: 07:58–08:02
+  const isMorningWindow = nowTimeSP >= '07:58' && nowTimeSP <= '08:02'
+
+  console.log(`Rodando — hoje: ${today} | agora: ${nowTimeSP} | email+zapProf: ${h28}–${h32} | zap25: ${h23}–${h27} | zap10: ${h8}–${h12} | manhã: ${isMorningWindow}`)
 
   // ── Busca aulas para EMAIL (professor) ────────────────────────
   const { data: aulasEmail } = await db
@@ -333,14 +336,60 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Bom dia para professores com aula hoje (08:00) ───────────
+  if (isMorningWindow) {
+    // Busca todos os professor_id distintos com aula agendada hoje
+    const { data: aulasHoje } = await db
+      .from('agenda_meet')
+      .select('professor_id')
+      .eq('data', today)
+      .eq('status', 'agendada')
+
+    const profIds = [...new Set((aulasHoje || []).map((a: any) => a.professor_id).filter(Boolean))]
+
+    for (const profId of profIds) {
+      try {
+        const [{ data: prof }, { data: profInfo }] = await Promise.all([
+          db.from('usuarios').select('nome').eq('id', profId).single(),
+          db.from('professores_info').select('telefone, lembrete_manha_data').eq('usuario_id', profId).single()
+        ])
+
+        if (!profInfo?.telefone) continue
+        // Já enviou hoje — pula
+        if (profInfo.lembrete_manha_data === today) continue
+
+        const nomeProf = prof?.nome ?? 'Professor'
+        const primeiroNome = nomeProf.split(' ')[0]
+
+        const mensagem =
+          `Bom dia, professor ${primeiroNome}! 🌅\n\n` +
+          `Você tem aula agendada para hoje. Verifique no dashboard os horários para se programar. 📅\n\n` +
+          `30 minutos antes de cada aula você receberá o lembrete com o link por aqui também. 💜\n\n` +
+          `_Click do Saber_`
+
+        await enviarWhatsApp(profInfo.telefone, mensagem)
+        await db.from('professores_info').update({ lembrete_manha_data: today }).eq('usuario_id', profId)
+
+        console.log(`Bom dia enviado — professor ${nomeProf}`)
+        results.push({ tipo: 'bomDia', status: 'enviado', professor: nomeProf })
+
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`Erro bom dia professor ${profId}:`, msg)
+        results.push({ tipo: 'bomDia', status: 'erro', erro: msg })
+      }
+    }
+  }
+
   const emailEnviados    = results.filter(r => r.tipo === 'email'         && r.status === 'enviado').length
   const zapEnviados      = results.filter(r => r.tipo === 'whatsapp'      && r.status === 'enviado').length
   const zap10Enviados    = results.filter(r => r.tipo === 'whatsapp10'    && r.status === 'enviado').length
   const zapProfEnviados  = results.filter(r => r.tipo === 'whatsappProf'  && r.status === 'enviado').length
-  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}`)
+  const bomDiaEnviados   = results.filter(r => r.tipo === 'bomDia'        && r.status === 'enviado').length
+  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}`)
 
   return new Response(
-    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, total: results.length, results }),
+    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados, total: results.length, results }),
     { headers: { 'Content-Type': 'application/json' } }
   )
 })
