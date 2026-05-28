@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
   const now = new Date()
   const { date: today } = toSaoPaulo(now)
 
-  // Janela email professor: 28–32 min
+  // Janela email + WhatsApp professor: 28–32 min (alvo 30 min)
   const { time: h28 } = toSaoPaulo(new Date(now.getTime() + 28 * 60_000))
   const { time: h32 } = toSaoPaulo(new Date(now.getTime() + 32 * 60_000))
 
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
   const { time: h8  } = toSaoPaulo(new Date(now.getTime() +  8 * 60_000))
   const { time: h12 } = toSaoPaulo(new Date(now.getTime() + 12 * 60_000))
 
-  console.log(`Rodando — hoje: ${today} | email: ${h28}–${h32} | zap25: ${h23}–${h27} | zap10: ${h8}–${h12}`)
+  console.log(`Rodando — hoje: ${today} | email+zapProf: ${h28}–${h32} | zap25: ${h23}–${h27} | zap10: ${h8}–${h12}`)
 
   // ── Busca aulas para EMAIL (professor) ────────────────────────
   const { data: aulasEmail } = await db
@@ -130,6 +130,16 @@ Deno.serve(async (req) => {
     .eq('lembrete_whatsapp_10min_enviado', false)
     .gte('horario', h8)
     .lte('horario', h12)
+
+  // ── Busca aulas para WHATSAPP professor (30 min) ──────────────
+  const { data: aulasZapProf } = await db
+    .from('agenda_meet')
+    .select('id, data, horario, link_meet, professor_id, aluno_id')
+    .eq('data', today)
+    .eq('status', 'agendada')
+    .eq('lembrete_whatsapp_prof_enviado', false)
+    .gte('horario', h28)
+    .lte('horario', h32)
 
   const results: any[] = []
 
@@ -275,13 +285,62 @@ Deno.serve(async (req) => {
     }
   }
 
-  const emailEnviados  = results.filter(r => r.tipo === 'email'      && r.status === 'enviado').length
-  const zapEnviados    = results.filter(r => r.tipo === 'whatsapp'   && r.status === 'enviado').length
-  const zap10Enviados  = results.filter(r => r.tipo === 'whatsapp10' && r.status === 'enviado').length
-  console.log(`Concluído — emails: ${emailEnviados}, whatsapp25: ${zapEnviados}, whatsapp10: ${zap10Enviados}`)
+  // ── Envia WHATSAPP professor (30 min) ────────────────────────
+  for (const aula of (aulasZapProf || [])) {
+    try {
+      const [{ data: prof }, { data: profInfo }, { data: aluno }, { data: alunoInfo }] = await Promise.all([
+        db.from('usuarios').select('nome').eq('id', aula.professor_id).single(),
+        db.from('professores_info').select('telefone').eq('usuario_id', aula.professor_id).single(),
+        db.from('usuarios').select('nome').eq('id', aula.aluno_id).single(),
+        db.from('alunos_info').select('serie, disciplina').eq('usuario_id', aula.aluno_id).single()
+      ])
+
+      const telefone = profInfo?.telefone
+      if (!telefone) {
+        await db.from('agenda_meet').update({ lembrete_whatsapp_prof_enviado: true }).eq('id', aula.id)
+        results.push({ id: aula.id, tipo: 'whatsappProf', status: 'sem_telefone' })
+        continue
+      }
+
+      const horarioFmt = (aula.horario ?? '').substring(0, 5)
+      const nomeAluno  = aluno?.nome         ?? 'aluno'
+      const disciplina = alunoInfo?.disciplina ?? ''
+      const serie      = alunoInfo?.serie      ?? ''
+
+      let mensagem =
+        `📋 Lembrete de aula em *30 minutos* (às ${horarioFmt})!\n\n` +
+        `👤 Aluno: *${nomeAluno}*`
+
+      if (disciplina) mensagem += `\n📚 Disciplina: ${disciplina}`
+      if (serie)      mensagem += ` — ${serie}`
+
+      if (aula.link_meet) {
+        mensagem += `\n\n🔗 Link da aula:\n${aula.link_meet}`
+      }
+
+      mensagem += `\n\n_Click do Saber_`
+
+      await enviarWhatsApp(telefone, mensagem)
+
+      await db.from('agenda_meet').update({ lembrete_whatsapp_prof_enviado: true }).eq('id', aula.id)
+      console.log(`WhatsApp professor enviado — ${normalizarTelefone(telefone)} — aula ${aula.id}`)
+      results.push({ id: aula.id, tipo: 'whatsappProf', status: 'enviado', para: normalizarTelefone(telefone) })
+
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`Erro WhatsApp professor aula ${aula.id}:`, msg)
+      results.push({ id: aula.id, tipo: 'whatsappProf', status: 'erro', erro: msg })
+    }
+  }
+
+  const emailEnviados    = results.filter(r => r.tipo === 'email'         && r.status === 'enviado').length
+  const zapEnviados      = results.filter(r => r.tipo === 'whatsapp'      && r.status === 'enviado').length
+  const zap10Enviados    = results.filter(r => r.tipo === 'whatsapp10'    && r.status === 'enviado').length
+  const zapProfEnviados  = results.filter(r => r.tipo === 'whatsappProf'  && r.status === 'enviado').length
+  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}`)
 
   return new Response(
-    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, total: results.length, results }),
+    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, total: results.length, results }),
     { headers: { 'Content-Type': 'application/json' } }
   )
 })

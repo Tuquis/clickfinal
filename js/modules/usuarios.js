@@ -128,6 +128,11 @@ Modules.Usuarios = {
                                 <input type="url" class="input" id="u-link-meet"
                                     placeholder="https://meet.google.com/..." />
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">WhatsApp do Professor</label>
+                                <input type="tel" class="input" id="u-telefone-professor"
+                                    placeholder="(71) 99999-9999" />
+                            </div>
                         </div>
 
                         <!-- Campos extras para PSICOPEDAGOGA -->
@@ -313,6 +318,7 @@ Modules.Usuarios = {
         document.getElementById('u-materia').value = '';
         document.getElementById('u-pix').value = '';
         document.getElementById('u-link-meet').value = '';
+        document.getElementById('u-telefone-professor').value = '';
         document.getElementById('u-psico-meet').value = '';
         openModal('modal-usuario');
     },
@@ -353,9 +359,10 @@ Modules.Usuarios = {
             var piRes = await supabase.from('professores_info').select('*').eq('usuario_id', id).single();
             var pi = piRes.data;
             if (pi) {
-                document.getElementById('u-materia').value    = pi.materia   || '';
-                document.getElementById('u-pix').value        = pi.chave_pix || '';
-                document.getElementById('u-link-meet').value  = pi.link_meet || '';
+                document.getElementById('u-materia').value             = pi.materia   || '';
+                document.getElementById('u-pix').value                 = pi.chave_pix || '';
+                document.getElementById('u-link-meet').value           = pi.link_meet || '';
+                document.getElementById('u-telefone-professor').value  = pi.telefone  || '';
             }
         } else if (u.role === 'psicopedagoga') {
             document.getElementById('u-psico-fields').style.display = 'block';
@@ -438,11 +445,12 @@ Modules.Usuarios = {
         }
 
         if (role === 'professor') {
-            var materia   = document.getElementById('u-materia').value.trim();
-            var chavePix  = document.getElementById('u-pix').value.trim();
-            var linkMeet  = document.getElementById('u-link-meet').value.trim();
+            var materia          = document.getElementById('u-materia').value.trim();
+            var chavePix         = document.getElementById('u-pix').value.trim();
+            var linkMeet         = document.getElementById('u-link-meet').value.trim();
+            var telefoneProf     = document.getElementById('u-telefone-professor').value.trim();
             if (!materia) errors.push('Matéria é obrigatória');
-            profData = { materia, chave_pix: chavePix || null, link_meet: linkMeet || null };
+            profData = { materia, chave_pix: chavePix || null, link_meet: linkMeet || null, telefone: telefoneProf || null };
         }
 
         if (role === 'psicopedagoga') {
