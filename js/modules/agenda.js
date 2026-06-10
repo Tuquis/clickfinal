@@ -1102,60 +1102,17 @@ Modules.Agenda = {
         }
     },
 
-    // ── notificação de email via EmailJS ──────────────────────
+    // ── notificação via WhatsApp (Z-API — Edge Function) ──────
     async _notificarProfessor(agendaId) {
         if (!agendaId) return;
-        if (!window.EMAILJS_CONFIG?.publicKey || window.EMAILJS_CONFIG.publicKey.startsWith('COLE_')) return;
-
         try {
-            // Busca dados da aula (view já traz professor_id)
-            const { data: aula, error: aulaErr } = await supabase
-                .from('v_agenda_completa')
-                .select('*')
-                .eq('id', agendaId)
-                .single();
-
-            if (aulaErr || !aula) { console.warn('Aula não encontrada para notificação'); return; }
-
-            // Busca email do professor
-            const { data: prof, error: profErr } = await supabase
-                .from('usuarios')
-                .select('email, nome')
-                .eq('id', aula.professor_id)
-                .single();
-
-            if (profErr || !prof?.email) { console.warn('Professor sem email'); return; }
-
-            // Formata data em pt-BR
-            const dataObj      = new Date(aula.data + 'T00:00:00');
-            const dias         = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
-            const meses        = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
-            const dataFormatada = `${dias[dataObj.getDay()]}, ${dataObj.getDate()} de ${meses[dataObj.getMonth()]} de ${dataObj.getFullYear()}`;
-
-            const params = {
-                to_email:       prof.email,
-                to_name:        prof.nome,
-                professor_nome: aula.professor_nome  || '',
-                aluno_nome:     aula.aluno_nome      || '',
-                disciplina:     aula.disciplina      || '',
-                serie:          aula.serie           || '',
-                data_aula:      dataFormatada,
-                horario:        (aula.horario || '').substring(0, 5),
-                conteudo:       aula.conteudo        || '',
-                link_meet:      aula.link_meet       || 'Não informado ainda'
-            };
-
-            console.log('Enviando email para:', prof.email, params);
-
-            const resp = await emailjs.send(
-                window.EMAILJS_CONFIG.serviceId,
-                window.EMAILJS_CONFIG.templateId,
-                params
-            );
-
-            console.log('Email enviado com sucesso:', resp.status, resp.text);
+            const { error } = await supabase.functions.invoke('send-agendamento-email', {
+                body: { agendaId }
+            });
+            if (error) console.warn('Notificação WhatsApp falhou:', error.message);
+            else       console.log('WhatsApp de agendamento enviado ao professor');
         } catch (e) {
-            console.warn('Notificação de email falhou:', e?.text || e?.message || e);
+            console.warn('Notificação WhatsApp falhou:', e?.message || e);
         }
     },
 
