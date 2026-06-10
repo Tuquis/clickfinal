@@ -830,116 +830,196 @@ Modules.Relatorios = {
             var profNome  = (r.professor && r.professor.nome) || '—';
 
             var habAcad  = (r.habilidades?.academicas || [])
-                .map(function(k) { return Modules.Relatorios._HAB_LABELS[k] || k; }).join(', ') || 'Nenhuma';
+                .map(function(k) { return Modules.Relatorios._HAB_LABELS[k] || k; }).join('\n') || 'Nenhuma';
             var habSocio = (r.habilidades?.socioemocionais || [])
-                .map(function(k) { return Modules.Relatorios._SOCIO_LABELS[k] || k; }).join(', ') || 'Nenhuma';
+                .map(function(k) { return Modules.Relatorios._SOCIO_LABELS[k] || k; }).join('\n') || 'Nenhuma';
             var ferrStr  = (r.ferramentas || [])
-                .map(function(k) { return Modules.Relatorios._FERR_LABELS[k] || k; }).join(', ') || 'Nenhuma';
+                .map(function(k) { return Modules.Relatorios._FERR_LABELS[k] || k; }).join('\n') || 'Nenhuma';
 
-            // NFC normaliza caracteres compostos (ã, ç, é) para jsPDF renderizar corretamente
             var nfc = function(s) { return s ? String(s).normalize('NFC') : ''; };
 
+            var C_PURPLE      = [111, 79, 227];
+            var C_PURPLE_DARK = [79, 48, 173];
+            var C_PURPLE_LITE = [237, 233, 254];
+            var C_PURPLE_SEC  = [167, 139, 250];
+            var C_ROW_ODD     = [249, 248, 255];
+            var C_LABEL       = [17, 24, 39];
+            var C_BLACK       = [17, 24, 39];
+            var C_WHITE       = [255, 255, 255];
+
             var doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            var pageW = 210;
+            var pageH = doc.internal.pageSize.height;
+            var margin = 10;
+            var colW = pageW - margin * 2;
 
-            // ── HEADER ────────────────────────────────────────────────
-            doc.setFillColor(111, 79, 227);
-            doc.rect(0, 0, 210, 35, 'F');
+            // ── Rodapé em todas as páginas ────────────────────────────
+            var drawFooter = function() {
+                var pages = doc.internal.getNumberOfPages();
+                for (var p = 1; p <= pages; p++) {
+                    doc.setPage(p);
+                    doc.setFillColor(...C_PURPLE);
+                    doc.rect(0, pageH - 12, pageW, 12, 'F');
+                    doc.setTextColor(...C_WHITE);
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(nfc('Click do Saber  |  Plataforma de Acompanhamento Pedagogico  |  Pagina ' + p + ' de ' + pages), pageW / 2, pageH - 5, { align: 'center' });
+                }
+            };
 
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(20);
+            // ── Cabeçalho de seção ────────────────────────────────────
+            var drawSection = function(y, title, color) {
+                doc.setFillColor(...color);
+                doc.roundedRect(margin, y, colW, 8, 1, 1, 'F');
+                doc.setTextColor(...C_WHITE);
+                doc.setFontSize(8.5);
+                doc.setFont('helvetica', 'bold');
+                doc.text(nfc(title.toUpperCase()), margin + 4, y + 5.5);
+                return y + 8;
+            };
+
+            // ── Tabela de seção ───────────────────────────────────────
+            var drawTable = function(startY, rows) {
+                doc.autoTable({
+                    startY: startY,
+                    body: rows,
+                    theme: 'plain',
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+                        textColor: C_BLACK,
+                        lineColor: [220, 215, 240],
+                        lineWidth: 0.2
+                    },
+                    columnStyles: {
+                        0: { fontStyle: 'bold', cellWidth: 58, fillColor: C_ROW_ODD, textColor: C_LABEL }
+                    },
+                    alternateRowStyles: { fillColor: [255, 255, 255] },
+                    margin: { left: margin, right: margin },
+                    tableWidth: colW,
+                    didDrawPage: function() {}
+                });
+                return doc.lastAutoTable.finalY + 4;
+            };
+
+            // ════════════════════════════════════════════════════════
+            // HEADER
+            // ════════════════════════════════════════════════════════
+            doc.setFillColor(...C_PURPLE);
+            doc.rect(0, 0, pageW, 38, 'F');
+
+            // Faixa diagonal decorativa
+            doc.setFillColor(...C_PURPLE_DARK);
+            doc.triangle(160, 0, 210, 0, 210, 38, 'F');
+
+            doc.setTextColor(...C_WHITE);
+            doc.setFontSize(22);
             doc.setFont('helvetica', 'bold');
-            doc.text(nfc('CLICK DO SABER'), 105, 15, { align: 'center' });
+            doc.text(nfc('Click do Saber'), pageW / 2, 16, { align: 'center' });
 
-            doc.setFontSize(11);
+            doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text(nfc('Relatório Pedagógico Individual'), 105, 23, { align: 'center' });
+            doc.text(nfc('Relatorio Pedagogico Individual'), pageW / 2, 24, { align: 'center' });
 
-            doc.setFontSize(9);
-            doc.text(nfc('Gerado em ' + new Date().toLocaleDateString('pt-BR')), 105, 30, { align: 'center' });
+            doc.setFontSize(8);
+            var dataEmissao = new Date(r.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+            doc.text(nfc('Emitido em ' + dataEmissao), pageW / 2, 31, { align: 'center' });
 
-            // ── CARD DO ALUNO ─────────────────────────────────────────
-            doc.setFillColor(245, 245, 245);
-            doc.roundedRect(10, 40, 190, 28, 3, 3, 'F');
+            // ════════════════════════════════════════════════════════
+            // CARD DE IDENTIFICAÇÃO
+            // ════════════════════════════════════════════════════════
+            doc.setFillColor(...C_PURPLE_LITE);
+            doc.roundedRect(margin, 42, colW, 24, 2, 2, 'F');
+            doc.setDrawColor(...C_PURPLE);
+            doc.setLineWidth(0.4);
+            doc.roundedRect(margin, 42, colW, 24, 2, 2, 'S');
 
-            doc.setTextColor(0, 0, 0);
-            doc.setFontSize(11);
+            // Linha divisória vertical
+            doc.setDrawColor(...C_PURPLE);
+            doc.setLineWidth(0.3);
+            doc.line(margin + 63, 44, margin + 63, 64);
+            doc.line(margin + 126, 44, margin + 126, 64);
 
-            doc.setFont('helvetica', 'bold');
-            doc.text(nfc('Aluno:'), 15, 50);
-            doc.setFont('helvetica', 'normal');
-            doc.text(nfc(alunoNome), 35, 50);
+            var cols = [margin + 4, margin + 67, margin + 130];
+            var labels = ['ALUNO', 'PROFESSOR', 'DISCIPLINA'];
+            var values = [alunoNome, profNome, r.disciplina_ministrada || '—'];
 
-            doc.setFont('helvetica', 'bold');
-            doc.text(nfc('Professor:'), 120, 50);
-            doc.setFont('helvetica', 'normal');
-            doc.text(nfc(profNome), 145, 50);
+            for (var i = 0; i < 3; i++) {
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(...C_PURPLE);
+                doc.text(nfc(labels[i]), cols[i], 50);
 
-            doc.setFont('helvetica', 'bold');
-            doc.text(nfc('Disciplina:'), 15, 62);
-            doc.setFont('helvetica', 'normal');
-            doc.text(nfc(r.disciplina_ministrada || '—'), 45, 62);
+                doc.setFontSize(9.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(...C_BLACK);
+                var val = nfc(values[i]);
+                if (val.length > 22) val = val.substring(0, 21) + '...';
+                doc.text(val, cols[i], 58);
+            }
 
-            // ── TABELA ────────────────────────────────────────────────
-            var tableBody = [
-                { item: nfc('Data'),                        detalhe: nfc(new Date(r.created_at).toLocaleDateString('pt-BR')) },
-                { item: nfc('Conteúdo Trabalhado'),         detalhe: nfc(r.conteudo_ministrado || '—') }
+            var y = 72;
+
+            // ════════════════════════════════════════════════════════
+            // SEÇÃO 1 — SOBRE A AULA
+            // ════════════════════════════════════════════════════════
+            y = drawSection(y, 'Sobre a Aula', C_PURPLE);
+
+            var sec1 = [
+                [nfc('Conteudo Ministrado'), nfc(r.conteudo_ministrado || '—')]
             ];
-
             if (r.meta_atingida) {
-                tableBody.push({ item: nfc('Meta da Aula Atingida'), detalhe: nfc(Modules.Relatorios._META_LABELS[r.meta_atingida] || r.meta_atingida) });
+                sec1.push([nfc('Meta da Aula'), nfc(Modules.Relatorios._META_LABELS[r.meta_atingida] || r.meta_atingida)]);
                 if (r.retomar_conteudo !== null && r.retomar_conteudo !== undefined) {
-                    tableBody.push({ item: nfc('Retomar Conteúdo'), detalhe: nfc(r.retomar_conteudo ? 'Sim' : 'Não') });
+                    sec1.push([nfc('Retomar Conteudo'), nfc(r.retomar_conteudo ? 'Sim' : 'Nao')]);
                 }
             }
+            y = drawTable(y, sec1);
 
-            tableBody.push(
-                { item: nfc('Comportamento'),               detalhe: nfc(Modules.Relatorios._COMP_LABELS[r.comportamento]   || r.comportamento  || '—') }
-            );
+            // ════════════════════════════════════════════════════════
+            // SEÇÃO 2 — AVALIAÇÃO DO ALUNO
+            // ════════════════════════════════════════════════════════
+            y = drawSection(y, 'Avaliacao do Aluno', C_PURPLE);
 
+            var sec2 = [
+                [nfc('Comportamento'), nfc(Modules.Relatorios._COMP_LABELS[r.comportamento] || r.comportamento || '—')]
+            ];
             if (r.interatividade) {
-                tableBody.push({ item: nfc('Nível de Interatividade'), detalhe: nfc(Modules.Relatorios._INTERATIV_LABELS[r.interatividade] || r.interatividade) });
+                sec2.push([nfc('Interatividade'), nfc(Modules.Relatorios._INTERATIV_LABELS[r.interatividade] || r.interatividade)]);
             }
-
-            tableBody.push(
-                { item: nfc('Compreensão'),                 detalhe: nfc(Modules.Relatorios._COMPR_LABELS[r.compreensao]    || r.compreensao    || '—') },
-                { item: nfc('Habilidades Acadêmicas'),      detalhe: nfc(habAcad) },
-                { item: nfc('Habilidades Socioemocionais'), detalhe: nfc(habSocio) },
-                { item: nfc('Ferramentas Utilizadas'),      detalhe: nfc(ferrStr) }
-            );
-
+            sec2.push([nfc('Compreensao'), nfc(Modules.Relatorios._COMPR_LABELS[r.compreensao] || r.compreensao || '—')]);
             if (r.camera_objecao !== null && r.camera_objecao !== undefined) {
-                tableBody.push({ item: nfc('Objeção à Câmera'), detalhe: nfc(r.camera_objecao ? 'Sim' : 'Não') });
+                sec2.push([nfc('Objecao a Camera'), nfc(r.camera_objecao ? 'Sim' : 'Nao')]);
                 if (r.camera_objecao && r.camera_objecao_detalhe) {
-                    tableBody.push({ item: nfc('Detalhe Câmera'), detalhe: nfc(r.camera_objecao_detalhe) });
+                    sec2.push([nfc('Detalhe Camera'), nfc(r.camera_objecao_detalhe)]);
                 }
             }
+            y = drawTable(y, sec2);
 
-            if (r.observacoes) {
-                tableBody.push({ item: nfc('Observações'), detalhe: nfc(r.observacoes) });
+            // ════════════════════════════════════════════════════════
+            // SEÇÃO 3 — HABILIDADES & FERRAMENTAS
+            // ════════════════════════════════════════════════════════
+            y = drawSection(y, 'Habilidades e Ferramentas', C_PURPLE);
+
+            var sec3 = [
+                [nfc('Habilidades Academicas'),      nfc(habAcad)],
+                [nfc('Habilidades Socioemocionais'), nfc(habSocio)],
+                [nfc('Ferramentas Utilizadas'),      nfc(ferrStr)]
+            ];
+            y = drawTable(y, sec3);
+
+            // ════════════════════════════════════════════════════════
+            // SEÇÃO 4 — OBSERVAÇÕES & RECOMENDAÇÕES
+            // ════════════════════════════════════════════════════════
+            if (r.observacoes || r.recomendacoes) {
+                y = drawSection(y, 'Observacoes e Recomendacoes', C_PURPLE);
+                var sec4 = [];
+                if (r.observacoes)    sec4.push([nfc('Observacoes'),   nfc(r.observacoes)]);
+                if (r.recomendacoes)  sec4.push([nfc('Recomendacoes'), nfc(r.recomendacoes)]);
+                y = drawTable(y, sec4);
             }
 
-            tableBody.push({ item: nfc('Recomendações'), detalhe: nfc(r.recomendacoes || 'Nenhuma') });
-
-            doc.autoTable({
-                startY: 78,
-                theme: 'grid',
-                headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
-                styles: { fontSize: 10, cellPadding: 4 },
-                columns: [
-                    { header: 'Categoria', dataKey: 'item' },
-                    { header: 'Descrição',  dataKey: 'detalhe' }
-                ],
-                body: tableBody,
-                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 65 } }
-            });
-
-            // ── RODAPÉ ────────────────────────────────────────────────
-            var pageHeight = doc.internal.pageSize.height;
-            doc.setDrawColor(200);
-            doc.line(10, pageHeight - 20, 200, pageHeight - 20);
-            doc.setFontSize(9);
-            doc.setTextColor(120);
-            doc.text(nfc('Click do Saber - Plataforma de Acompanhamento Pedagógico'), 105, pageHeight - 12, { align: 'center' });
+            drawFooter();
 
             var nomeArquivo = alunoNome.normalize('NFC').replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim().replace(/\s+/g, '-').toLowerCase();
             doc.save('relatorio-' + (nomeArquivo || id.substring(0, 8)) + '.pdf');
