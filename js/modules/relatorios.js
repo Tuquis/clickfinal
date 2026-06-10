@@ -296,6 +296,25 @@ Modules.Relatorios = {
             <div id="rel-form-fields" style="display:none">
                 <hr class="divider" />
 
+                <!-- 0. DISCIPLINA MINISTRADA -->
+                <div class="rel-section">
+                    <div class="rel-section-title">📖 Disciplina ministrada *</div>
+                    <select class="input" id="rel-disciplina">
+                        <option value="">— selecione a disciplina —</option>
+                        <option value="Matemática">Matemática</option>
+                        <option value="Física">Física</option>
+                        <option value="Química">Química</option>
+                        <option value="História">História</option>
+                        <option value="Geografia">Geografia</option>
+                        <option value="Ciências">Ciências</option>
+                        <option value="Biologia">Biologia</option>
+                        <option value="Inglês">Inglês</option>
+                        <option value="Português">Português</option>
+                        <option value="Redação">Redação</option>
+                        <option value="Espanhol">Espanhol</option>
+                    </select>
+                </div>
+
                 <!-- 1. CONTEÚDO -->
                 <div class="rel-section">
                     <div class="rel-section-title">📚 Conteúdo ministrado</div>
@@ -537,9 +556,10 @@ Modules.Relatorios = {
     },
 
     async salvar() {
-        var alunoId       = document.getElementById('rel-aluno-id').value;
-        var conteudo      = (document.getElementById('rel-conteudo')?.value || '').trim();
-        var comportEl     = document.querySelector('input[name="rel-comportamento"]:checked');
+        var alunoId              = document.getElementById('rel-aluno-id').value;
+        var disciplinaMinistrada = document.getElementById('rel-disciplina')?.value || '';
+        var conteudo             = (document.getElementById('rel-conteudo')?.value || '').trim();
+        var comportEl            = document.querySelector('input[name="rel-comportamento"]:checked');
         var comportamento = comportEl ? comportEl.value : null;
         var comprEl       = document.querySelector('input[name="rel-compreensao"]:checked');
         var compreensao   = comprEl ? comprEl.value : null;
@@ -570,8 +590,9 @@ Modules.Relatorios = {
         var camera_objecao_detalhe = (camera_objecao && camDetEl)
             ? camDetEl.value.trim() : null;
 
-        if (!alunoId)      return showToast('Selecione o aluno', 'error');
-        if (!conteudo)     return showToast('Informe o conteúdo ministrado', 'error');
+        if (!alunoId)              return showToast('Selecione o aluno', 'error');
+        if (!disciplinaMinistrada) return showToast('Selecione a disciplina ministrada', 'error');
+        if (!conteudo)             return showToast('Informe o conteúdo ministrado', 'error');
         if (!meta_atingida)return showToast('Informe se a meta da aula foi atingida', 'error');
         if (!comportamento)return showToast('Selecione o comportamento do aluno', 'error');
         if (!interatividade)return showToast('Selecione o nível de interatividade', 'error');
@@ -586,6 +607,7 @@ Modules.Relatorios = {
             var ins = await supabase.from('relatorios').insert({
                 professor_id:          AppState.userProfile.id,
                 aluno_id:              alunoId,
+                disciplina_ministrada: disciplinaMinistrada || null,
                 conteudo_ministrado:   conteudo,
                 comportamento:         comportamento,
                 compreensao:           compreensao,
@@ -674,8 +696,18 @@ Modules.Relatorios = {
                             <span class="meta-label">Professor&nbsp;</span>
                             ${escapeHtml((r.professor && r.professor.nome) || '—')}
                         </div>
+                        ${r.disciplina_ministrada ? `<div>
+                            <span class="meta-label">Disciplina&nbsp;</span>
+                            <strong>${escapeHtml(r.disciplina_ministrada)}</strong>
+                        </div>` : ''}
                     </div>
                 </div>
+
+                ${r.disciplina_ministrada ? `
+                <div class="rel-bloco">
+                    <div class="rel-bloco-titulo">📖 Disciplina ministrada</div>
+                    <p>${escapeHtml(r.disciplina_ministrada)}</p>
+                </div>` : ''}
 
                 <div class="rel-bloco">
                     <div class="rel-bloco-titulo">📚 Conteúdo ministrado</div>
@@ -827,7 +859,7 @@ Modules.Relatorios = {
 
             // ── CARD DO ALUNO ─────────────────────────────────────────
             doc.setFillColor(245, 245, 245);
-            doc.roundedRect(10, 40, 190, 20, 3, 3, 'F');
+            doc.roundedRect(10, 40, 190, 28, 3, 3, 'F');
 
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(11);
@@ -841,6 +873,11 @@ Modules.Relatorios = {
             doc.text(nfc('Professor:'), 120, 50);
             doc.setFont('helvetica', 'normal');
             doc.text(nfc(profNome), 145, 50);
+
+            doc.setFont('helvetica', 'bold');
+            doc.text(nfc('Disciplina:'), 15, 62);
+            doc.setFont('helvetica', 'normal');
+            doc.text(nfc(r.disciplina_ministrada || '—'), 45, 62);
 
             // ── TABELA ────────────────────────────────────────────────
             var tableBody = [
@@ -884,7 +921,7 @@ Modules.Relatorios = {
             tableBody.push({ item: nfc('Recomendações'), detalhe: nfc(r.recomendacoes || 'Nenhuma') });
 
             doc.autoTable({
-                startY: 70,
+                startY: 78,
                 theme: 'grid',
                 headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
                 styles: { fontSize: 10, cellPadding: 4 },
