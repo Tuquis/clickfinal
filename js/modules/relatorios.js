@@ -299,7 +299,7 @@ Modules.Relatorios = {
                 <!-- 0. DISCIPLINA MINISTRADA -->
                 <div class="rel-section">
                     <div class="rel-section-title">📖 Disciplina ministrada *</div>
-                    <select class="input" id="rel-disciplina">
+                    <select class="input" id="rel-disciplina" required>
                         <option value="">— selecione a disciplina —</option>
                         <option value="Matemática">Matemática</option>
                         <option value="Física">Física</option>
@@ -954,8 +954,8 @@ Modules.Relatorios = {
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(...C_BLACK);
                 var val = nfc(values[i]);
-                if (val.length > 22) val = val.substring(0, 21) + '...';
-                doc.text(val, cols[i], 58);
+                var lines = doc.splitTextToSize(val, 57);
+                doc.text(lines, cols[i], 57);
             }
 
             var y = 72;
