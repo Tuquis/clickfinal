@@ -495,6 +495,7 @@ CREATE POLICY "usuarios_select" ON public.usuarios FOR SELECT
         public.get_user_role() = 'admin'
         OR id = public.get_user_id()
         OR public.get_user_role() IN ('professor','psicopedagoga')
+        OR (public.get_user_role() = 'aluno' AND role = 'professor')
     );
 CREATE POLICY "usuarios_insert" ON public.usuarios FOR INSERT
     WITH CHECK (public.get_user_role() = 'admin');
@@ -989,6 +990,53 @@ CREATE OR REPLACE FUNCTION public.count_relatorios_professor(prof_id UUID)
 RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT COUNT(*) FROM public.relatorios WHERE professor_id = prof_id;
 $$;
+
+-- Contatos do chat: professor → alunos ativos | aluno → professores ativos
+-- SECURITY DEFINER bypassa RLS, permitindo que alunos vejam professores
+DROP FUNCTION IF EXISTS public.get_contatos_chat(TEXT);
+CREATE OR REPLACE FUNCTION public.get_contatos_chat(p_role TEXT)
+RETURNS TABLE(id UUID, nome TEXT)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT u.id, u.nome
+    FROM public.usuarios u
+    WHERE u.role = CASE WHEN p_role = 'professor' THEN 'aluno' ELSE 'professor' END
+      AND u.ativo = true
+    ORDER BY u.nome;
+$$;
+GRANT EXECUTE ON FUNCTION public.get_contatos_chat(TEXT) TO authenticated;
+
+-- Trigger: notifica professor no WhatsApp quando aluno envia mensagem
+-- Chama a Edge Function notify-chat-message via net.http_post (pg_net)
+CREATE OR REPLACE FUNCTION public.fn_notify_chat_message()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  PERFORM net.http_post(
+    url     := 'https://kverxbbwvmxcdiqwcijp.supabase.co/functions/v1/notify-chat-message',
+    body    := jsonb_build_object(
+                  'type',       TG_OP,
+                  'table',      TG_TABLE_NAME,
+                  'schema',     TG_TABLE_SCHEMA,
+                  'record',     row_to_json(NEW),
+                  'old_record', NULL
+               ),
+    headers := '{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZXJ4YmJ3dm14Y2RpcXdjaWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MzYxMzUsImV4cCI6MjA5MzIxMjEzNX0.yZW-29JAIuJvZgsDO6gy8gmGswz4NgDTW1M0izGxZAI"}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_nova_mensagem_direta ON public.mensagens_diretas;
+CREATE TRIGGER on_nova_mensagem_direta
+AFTER INSERT ON public.mensagens_diretas
+FOR EACH ROW
+EXECUTE FUNCTION public.fn_notify_chat_message();
 
 
 -- ══════════════════════════════════════════════════════════════

@@ -1,70 +1,345 @@
 // ============================================================
-// MÓDULO: CHAT — mensagens em tempo real por aula (com anexos)
+// MÓDULO: CHAT DIRETO — mensagens entre professor e aluno
+// Interface estilo WhatsApp: lista de contatos + conversa
 // ============================================================
 
 Modules.Chat = {
-    _channel:         null,
-    _agendaId:        null,
-    _outroNome:       null,
-    _outroId:         null,
-    _injected:        false,
-    _pendingFileUrl:  null,
-    _pendingFileName: null,
-    _pendingFileTipo: null,
-    _uploading:       false,
+    _uid:            null,
+    _role:           null,
+    _contacts:       [],
+    _activeContact:  null,
+    _globalChannel:  null,
+    _onPage:         false,
 
-    // ── Ponto de entrada ──────────────────────────────────────
-    async open(agendaId) {
-        this._injectModal();
+    // ══════════════════════════════════════════════════════════
+    // INICIALIZAÇÃO GLOBAL (chamado no initApp, persiste sempre)
+    // ══════════════════════════════════════════════════════════
+    async initGlobal(uid, role) {
+        this._uid  = uid;
+        this._role = role;
+        if (role !== 'professor' && role !== 'aluno') return;
 
-        const { data: aula, error } = await supabase
-            .from('v_agenda_completa')
-            .select('*')
-            .eq('id', agendaId)
-            .single();
+        // Badge inicial
+        await this._refreshBadge();
 
-        if (error || !aula) return showToast('Erro ao carregar aula para o chat', 'error');
-
-        this._agendaId = agendaId;
-        this._clearPendingFile();
-
-        const uid  = AppState.userProfile.id;
-        const isMe = aula.professor_id === uid;
-        this._outroNome = isMe ? aula.aluno_nome    : aula.professor_nome;
-        this._outroId   = isMe ? aula.aluno_id      : aula.professor_id;
-
-        document.getElementById('chat-modal-title').textContent =
-            'Chat com ' + (this._outroNome || '—');
-
-        const dataFmt = new Date(aula.data + 'T00:00:00').toLocaleDateString('pt-BR', {
-            weekday: 'short', day: 'numeric', month: 'short'
-        });
-        document.getElementById('chat-modal-subtitle').textContent =
-            (aula.disciplina || 'Aula') + ' · ' + dataFmt + ' às ' + fmt.time(aula.horario);
-
-        document.getElementById('chat-messages').innerHTML =
-            '<div class="chat-loading"><div class="chat-loading-dots"><span></span><span></span><span></span></div></div>';
-        document.getElementById('chat-input').value = '';
-
-        openModal('modal-chat');
-
-        await this._loadMensagens();
-        this._subscribeRealtime();
-        document.getElementById('chat-input').focus();
+        // Realtime global: escuta novas mensagens recebidas
+        if (this._globalChannel) supabase.removeChannel(this._globalChannel);
+        this._globalChannel = supabase
+            .channel('chat-global-' + uid)
+            .on('postgres_changes', {
+                event:  'INSERT',
+                schema: 'public',
+                table:  'mensagens_diretas',
+                filter: `destinatario_id=eq.${uid}`,
+            }, (payload) => this._onGlobalMessage(payload.new))
+            .subscribe();
     },
 
-    // ── Carrega histórico ─────────────────────────────────────
-    async _loadMensagens() {
-        const container = document.getElementById('chat-messages');
+    async _refreshBadge() {
+        const { count } = await supabase
+            .from('mensagens_diretas')
+            .select('id', { count: 'exact', head: true })
+            .eq('destinatario_id', this._uid)
+            .eq('lida', false);
+
+        this._setBadge(count || 0);
+    },
+
+    _setBadge(n) {
+        const badge = document.getElementById('chat-nav-badge');
+        if (!badge) return;
+        badge.textContent    = n > 9 ? '9+' : String(n);
+        badge.style.display  = n > 0 ? '' : 'none';
+    },
+
+    _onGlobalMessage(msg) {
+        if (this._onPage) {
+            // Atualiza contato na lista se a página de chat estiver aberta
+            const c = this._contacts.find(x => x.id === msg.remetente_id);
+            if (c) {
+                c.lastMsg = msg;
+                if (this._activeContact?.id !== msg.remetente_id) {
+                    c.unread = (c.unread || 0) + 1;
+                } else {
+                    // Conversa ativa: appenda a bolha e marca como lida
+                    const container = document.getElementById('chat-direct-messages');
+                    if (container && !document.querySelector(`[data-chat-id="${msg.id}"]`)) {
+                        const msgDate = new Date(msg.created_at).toLocaleDateString('pt-BR');
+                        const lastSep = container.querySelector('.chat-date-sep:last-of-type');
+                        if (msgDate !== lastSep?.dataset.date) this._appendDateSep(container, msgDate);
+                        this._appendBubble(container, msg, true);
+                        supabase.from('mensagens_diretas').update({ lida: true }).eq('id', msg.id);
+                    }
+                }
+                this._sortContacts();
+                this._renderContactList();
+            }
+        }
+        this._refreshBadge();
+    },
+
+    // ══════════════════════════════════════════════════════════
+    // ROTA PRINCIPAL — render() chamado pelo Router
+    // ══════════════════════════════════════════════════════════
+    async render() {
+        this._uid    = AppState.userProfile.id;
+        this._role   = AppState.role;
+        this._onPage = true;
+        this._activeContact = null;
+
+        const main = document.getElementById('main-content');
+        main.innerHTML = `
+            <div class="chat-page">
+                <div class="chat-page-sidebar">
+                    <div class="chat-page-sidebar-header">
+                        <div class="chat-page-title">Mensagens</div>
+                        <input class="input chat-search" id="chat-search-input"
+                            placeholder="🔍 Buscar contato..."
+                            oninput="Modules.Chat._filterContacts(this.value)">
+                    </div>
+                    <div class="chat-contacts-list" id="chat-contacts-list">
+                        <div class="loader-inline" style="padding:24px"></div>
+                    </div>
+                </div>
+                <div class="chat-page-main" id="chat-page-main">
+                    <div class="chat-empty-state">
+                        <div class="chat-empty-icon">💬</div>
+                        <p>Selecione uma conversa para começar</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Zera badge ao entrar na página
+        this._setBadge(0);
+
+        await this._loadContacts();
+
+        // Se veio do dashboard com pendência, abre o primeiro contato com unread
+        const primeiroUnread = this._contacts.find(c => c.unread > 0);
+        if (primeiroUnread) this._openConv(primeiroUnread.id);
+    },
+
+    // ══════════════════════════════════════════════════════════
+    // CONTATOS
+    // ══════════════════════════════════════════════════════════
+    async _loadContacts() {
+        const uid  = this._uid;
+        const role = this._role;
+
+        const listEl = document.getElementById('chat-contacts-list');
+
+        // Carrega contatos pela role oposta
+        let users = null;
+        let usersErr = null;
+
+        if (role === 'professor') {
+            // Professor pode ver alunos direto (RLS permite)
+            const res = await supabase
+                .from('usuarios')
+                .select('id, nome')
+                .eq('role', 'aluno')
+                .eq('ativo', true)
+                .order('nome');
+            users    = res.data;
+            usersErr = res.error;
+        } else {
+            // Aluno: tenta RPC (SECURITY DEFINER) primeiro
+            const rpc = await supabase.rpc('get_contatos_chat', { p_role: 'aluno' });
+            if (!rpc.error) {
+                users = rpc.data;
+            } else {
+                // Fallback: busca via agenda_meet os IDs dos professores desta aluno
+                // e lê os seus próprios dados de um a um com .in() — RLS libera
+                // por auth.uid(), mas só quando o row.id está na lista autorizada;
+                // como isso ainda falha, usamos mensagens_diretas já existentes como pivot.
+                // Última opção: usa .or() para pegar role='professor' + id próprio.
+                // Supabase aplica RLS *antes* do OR, então qualquer linha de professor
+                // com a policy corrigida já aparece; se ainda não rodou o SQL, retorna vazio.
+                const res2 = await supabase
+                    .from('usuarios')
+                    .select('id, nome')
+                    .eq('role', 'professor')
+                    .eq('ativo', true)
+                    .order('nome');
+                users    = res2.data;
+                usersErr = res2.error;
+            }
+        }
+
+        if (usersErr) {
+            console.error('Erro ao carregar contatos:', usersErr);
+            if (listEl) listEl.innerHTML = '<p class="chat-no-contacts">Erro ao carregar contatos.</p>';
+            return;
+        }
+
+        if (!users || users.length === 0) {
+            if (listEl) listEl.innerHTML = '<p class="chat-no-contacts">Nenhum contato encontrado.</p>';
+            return;
+        }
+
+        const contactIds = users.map(u => u.id);
+
+        // Mensagens envolvendo o usuário atual (para preview + contagem unread)
+        const { data: allMsgs } = await supabase
+            .from('mensagens_diretas')
+            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida')
+            .or(`remetente_id.eq.${uid},destinatario_id.eq.${uid}`)
+            .order('created_at', { ascending: false });
+
+        const lastMsgByContact = {};
+        const unreadByContact  = {};
+        (allMsgs || []).forEach(m => {
+            const partnerId = m.remetente_id === uid ? m.destinatario_id : m.remetente_id;
+            if (!lastMsgByContact[partnerId]) lastMsgByContact[partnerId] = m;
+            if (m.destinatario_id === uid && !m.lida) {
+                unreadByContact[partnerId] = (unreadByContact[partnerId] || 0) + 1;
+            }
+        });
+
+        this._contacts = (users || []).map(u => ({
+            id:      u.id,
+            nome:    u.nome,
+            lastMsg: lastMsgByContact[u.id] || null,
+            unread:  unreadByContact[u.id]  || 0,
+        }));
+
+        this._sortContacts();
+        this._renderContactList();
+    },
+
+    _sortContacts() {
+        this._contacts.sort((a, b) => {
+            if (a.unread && !b.unread) return -1;
+            if (!a.unread && b.unread) return  1;
+            const ta = a.lastMsg?.created_at || '';
+            const tb = b.lastMsg?.created_at || '';
+            return tb.localeCompare(ta);
+        });
+    },
+
+    _renderContactList(filter) {
+        const listEl = document.getElementById('chat-contacts-list');
+        if (!listEl) return;
+
+        const q = (filter !== undefined ? filter : (document.getElementById('chat-search-input')?.value || '')).toLowerCase();
+        const filtered = q
+            ? this._contacts.filter(c => c.nome.toLowerCase().includes(q))
+            : this._contacts;
+
+        if (filtered.length === 0) {
+            listEl.innerHTML = '<p class="chat-no-contacts">Nenhum contato encontrado.</p>';
+            return;
+        }
+
+        listEl.innerHTML = filtered.map(c => {
+            const isActive = this._activeContact?.id === c.id;
+            const preview  = this._previewText(c);
+            const timeStr  = this._timeStr(c.lastMsg?.created_at);
+            const initial  = (c.nome || '?').charAt(0).toUpperCase();
+            return `
+                <div class="chat-contact-item${isActive ? ' active' : ''}${c.unread ? ' unread' : ''}"
+                     data-contact-id="${c.id}"
+                     onclick="Modules.Chat._openConv('${c.id}')">
+                    <div class="chat-contact-avatar">${initial}</div>
+                    <div class="chat-contact-info">
+                        <div class="chat-contact-name">${escapeHtml(c.nome)}</div>
+                        <div class="chat-contact-preview">${preview}</div>
+                    </div>
+                    <div class="chat-contact-meta">
+                        <span class="chat-contact-time">${timeStr}</span>
+                        ${c.unread ? `<span class="chat-contact-badge">${c.unread > 9 ? '9+' : c.unread}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    _previewText(c) {
+        if (!c.lastMsg) return '<em class="chat-no-msg">Sem mensagens</em>';
+        const prefix = c.lastMsg.remetente_id === this._uid ? 'Você: ' : '';
+        const text   = escapeHtml((c.lastMsg.conteudo || '').substring(0, 42));
+        const sufx   = (c.lastMsg.conteudo || '').length > 42 ? '…' : '';
+        return `<span>${escapeHtml(prefix)}${text}${sufx}</span>`;
+    },
+
+    _timeStr(iso) {
+        if (!iso) return '';
+        const d   = new Date(iso);
+        const now = new Date();
+        if (d.toDateString() === now.toDateString()) {
+            return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    },
+
+    _filterContacts(val) {
+        this._renderContactList(val);
+    },
+
+    // ══════════════════════════════════════════════════════════
+    // CONVERSA
+    // ══════════════════════════════════════════════════════════
+    async _openConv(contactId) {
+        if (!this._onPage) return;
+
+        const contact = this._contacts.find(c => c.id === contactId);
+        if (!contact) return;
+
+        this._activeContact = contact;
+
+        // Marca item ativo na lista
+        document.querySelectorAll('.chat-contact-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.contactId === contactId);
+        });
+
+        const mainEl = document.getElementById('chat-page-main');
+        if (!mainEl) return;
+
+        const initial = (contact.nome || '?').charAt(0).toUpperCase();
+        mainEl.innerHTML = `
+            <div class="chat-window">
+                <div class="chat-window-header">
+                    <div class="chat-contact-avatar">${initial}</div>
+                    <div class="chat-window-title">${escapeHtml(contact.nome)}</div>
+                </div>
+                <div class="chat-window-messages" id="chat-direct-messages">
+                    <div class="loader-inline" style="padding:32px"></div>
+                </div>
+                <div class="chat-window-footer">
+                    <textarea class="chat-input" id="chat-direct-input"
+                        placeholder="Digite uma mensagem… (Enter para enviar)"
+                        rows="1"
+                        onkeydown="Modules.Chat._handleKey(event)"></textarea>
+                    <button class="btn btn-primary chat-send-btn" onclick="Modules.Chat.send()">Enviar</button>
+                </div>
+            </div>
+        `;
+
+        await this._loadMessages(contactId);
+
+        // Marca como lido + zera unread do contato
+        await this._markRead(contactId);
+        contact.unread = 0;
+        this._renderContactList();
+        this._refreshBadge();
+
+        document.getElementById('chat-direct-input')?.focus();
+    },
+
+    async _loadMessages(contactId) {
+        const uid       = this._uid;
+        const container = document.getElementById('chat-direct-messages');
+        if (!container) return;
 
         const { data: msgs, error } = await supabase
-            .from('mensagens')
-            .select('id, remetente_id, conteudo, created_at, lida, anexo_url, anexo_nome, anexo_tipo')
-            .eq('agenda_id', this._agendaId)
+            .from('mensagens_diretas')
+            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida')
+            .or(`and(remetente_id.eq.${uid},destinatario_id.eq.${contactId}),and(remetente_id.eq.${contactId},destinatario_id.eq.${uid})`)
             .order('created_at', { ascending: true });
 
         if (error) {
-            container.innerHTML = `<p style="color:var(--color-red);padding:20px;text-align:center;">Erro: ${escapeHtml(error.message)}</p>`;
+            container.innerHTML = `<p style="color:var(--color-red);padding:24px;text-align:center">Erro ao carregar mensagens</p>`;
             return;
         }
 
@@ -75,111 +350,42 @@ Modules.Chat = {
                 <div class="chat-empty">
                     <div class="chat-empty-icon">💬</div>
                     <p>Nenhuma mensagem ainda.</p>
-                    <p>Inicie a conversa!</p>
+                    <p>Diga olá!</p>
                 </div>`;
             return;
         }
 
         let lastDate = null;
         msgs.forEach(m => {
-            const msgDate = new Date(m.created_at).toLocaleDateString('pt-BR');
-            if (msgDate !== lastDate) {
-                this._appendDateSeparator(msgDate);
-                lastDate = msgDate;
-            }
-            this._appendBubble(m, false);
+            const d = new Date(m.created_at).toLocaleDateString('pt-BR');
+            if (d !== lastDate) { this._appendDateSep(container, d); lastDate = d; }
+            this._appendBubble(container, m, false);
         });
 
         this._scrollBottom();
-        this._marcarLidas(msgs);
     },
 
-    // ── Realtime subscription ─────────────────────────────────
-    _subscribeRealtime() {
-        if (this._channel) supabase.removeChannel(this._channel);
-
-        this._channel = supabase
-            .channel('chat-' + this._agendaId)
-            .on('postgres_changes', {
-                event:  'INSERT',
-                schema: 'public',
-                table:  'mensagens',
-                filter: 'agenda_id=eq.' + this._agendaId
-            }, (payload) => {
-                if (document.querySelector('[data-chat-id="' + payload.new.id + '"]')) return;
-
-                const container  = document.getElementById('chat-messages');
-                const msgDate    = new Date(payload.new.created_at).toLocaleDateString('pt-BR');
-                const lastSep    = container.querySelector('.chat-date-sep:last-of-type');
-                if (msgDate !== lastSep?.dataset.date) this._appendDateSeparator(msgDate);
-
-                this._appendBubble(payload.new, true);
-
-                const uid = AppState.userProfile.id;
-                if (payload.new.remetente_id !== uid) {
-                    supabase.from('mensagens').update({ lida: true }).eq('id', payload.new.id);
-                }
-            })
-            .subscribe();
-    },
-
-    // ── Renderiza bolha ───────────────────────────────────────
-    _appendBubble(msg, animate) {
-        const container = document.getElementById('chat-messages');
-        if (!container) return;
-
-        container.querySelector('.chat-empty')?.remove();
-
-        const uid    = AppState.userProfile.id;
+    _appendBubble(container, msg, animate) {
+        const uid    = this._uid;
         const isMine = msg.remetente_id === uid;
         const hora   = new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const isImg  = msg.anexo_tipo?.startsWith('image/');
 
-        let anexoHtml = '';
-        if (msg.anexo_url) {
-            if (isImg) {
-                anexoHtml = `
-                    <div class="chat-attachment">
-                        <img src="${msg.anexo_url}"
-                             class="chat-attach-img"
-                             alt="${escapeHtml(msg.anexo_nome || 'imagem')}"
-                             onclick="window.open('${msg.anexo_url}','_blank')"
-                             loading="lazy">
-                    </div>`;
-            } else {
-                const ext = (msg.anexo_nome || '').split('.').pop().toUpperCase() || 'ARQUIVO';
-                anexoHtml = `
-                    <a href="${msg.anexo_url}" target="_blank" download="${escapeHtml(msg.anexo_nome || 'arquivo')}"
-                       class="chat-attachment chat-attachment-file">
-                        <span class="chat-attach-ext">${escapeHtml(ext)}</span>
-                        <span class="chat-attach-fname">${escapeHtml(msg.anexo_nome || 'arquivo')}</span>
-                        <span class="chat-attach-dl">⬇</span>
-                    </a>`;
-            }
-        }
-
-        // Mostra texto somente se houver e não for idêntico ao nome do arquivo (fallback)
-        const textoVisivel = msg.conteudo && msg.conteudo !== msg.anexo_nome;
+        if (document.querySelector(`[data-chat-id="${msg.id}"]`)) return;
 
         const div = document.createElement('div');
-        div.className    = 'chat-msg ' + (isMine ? 'chat-msg-mine' : 'chat-msg-other') + (animate ? ' chat-msg-new' : '');
+        div.className      = 'chat-msg ' + (isMine ? 'chat-msg-mine' : 'chat-msg-other') + (animate ? ' chat-msg-new' : '');
         div.dataset.chatId = msg.id;
         div.innerHTML = `
-            ${!isMine ? `<div class="chat-msg-name">${escapeHtml(this._outroNome || '')}</div>` : ''}
-            <div class="chat-bubble ${!msg.conteudo || !msg.anexo_url ? '' : 'chat-bubble-mixed'}">
-                ${anexoHtml}
-                ${textoVisivel ? `<div class="chat-bubble-text">${escapeHtml(msg.conteudo)}</div>` : ''}
+            <div class="chat-bubble">
+                <div class="chat-bubble-text">${escapeHtml(msg.conteudo)}</div>
             </div>
             <div class="chat-msg-time">${hora}</div>
         `;
-
         container.appendChild(div);
         if (animate) this._scrollBottom();
     },
 
-    _appendDateSeparator(dateStr) {
-        const container = document.getElementById('chat-messages');
-        if (!container) return;
+    _appendDateSep(container, dateStr) {
         const div = document.createElement('div');
         div.className    = 'chat-date-sep';
         div.dataset.date = dateStr;
@@ -188,163 +394,64 @@ Modules.Chat = {
     },
 
     _scrollBottom() {
-        const c = document.getElementById('chat-messages');
+        const c = document.getElementById('chat-direct-messages');
         if (c) c.scrollTop = c.scrollHeight;
     },
 
-    async _marcarLidas(msgs) {
-        const uid = AppState.userProfile.id;
-        const ids = (msgs || []).filter(m => m.remetente_id !== uid && !m.lida).map(m => m.id);
-        if (ids.length > 0) {
-            await supabase.from('mensagens').update({ lida: true }).in('id', ids);
-        }
+    async _markRead(contactId) {
+        await supabase
+            .from('mensagens_diretas')
+            .update({ lida: true })
+            .eq('remetente_id', contactId)
+            .eq('destinatario_id', this._uid)
+            .eq('lida', false);
     },
 
-    // ── Anexo: selecionar arquivo ─────────────────────────────
-    _abrirSeletorArquivo() {
-        document.getElementById('chat-file-input')?.click();
-    },
-
-    async _onFileSelect(e) {
-        const file = e.target.files?.[0];
-        e.target.value = '';
-        if (!file) return;
-
-        if (file.size > 10 * 1024 * 1024) {
-            showToast('Arquivo muito grande. Máximo: 10 MB', 'error');
-            return;
-        }
-
-        this._pendingFileName = file.name;
-        this._pendingFileTipo = file.type;
-        this._pendingFileUrl  = null;
-        this._uploading       = true;
-        this._updateSendBtn();
-        this._showFilePreview(file);
-
-        const url = await this._uploadFile(file);
-        this._uploading = false;
-
-        if (url) {
-            this._pendingFileUrl = url;
-        } else {
-            showToast('Falha ao enviar o arquivo. Tente novamente.', 'error');
-            this._clearPendingFile();
-        }
-        this._updateSendBtn();
-    },
-
-    async _uploadFile(file) {
-        const ext  = file.name.includes('.') ? file.name.split('.').pop() : 'bin';
-        const path = `${this._agendaId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-
-        const { error } = await supabase.storage
-            .from('chat-anexos')
-            .upload(path, file, { contentType: file.type, upsert: false });
-
-        if (error) { console.error('Upload error:', error); return null; }
-
-        const { data: urlData } = supabase.storage
-            .from('chat-anexos')
-            .getPublicUrl(path);
-
-        return urlData?.publicUrl || null;
-    },
-
-    _showFilePreview(file) {
-        const preview = document.getElementById('chat-file-preview');
-        if (!preview) return;
-
-        const isImg = file.type.startsWith('image/');
-        preview.style.display = 'flex';
-
-        if (isImg) {
-            const reader = new FileReader();
-            reader.onload = ev => {
-                preview.innerHTML = `
-                    <div class="chat-preview-item">
-                        <img src="${ev.target.result}" class="chat-preview-img" alt="">
-                        <span class="chat-preview-name">${escapeHtml(file.name)}</span>
-                        <span class="chat-preview-badge">${this._uploading ? 'Enviando…' : 'Pronto'}</span>
-                        <button class="chat-preview-remove" onclick="Modules.Chat._clearPendingFile()">×</button>
-                    </div>`;
-            };
-            reader.readAsDataURL(file);
-        } else {
-            const ext = file.name.split('.').pop().toUpperCase() || 'ARQ';
-            preview.innerHTML = `
-                <div class="chat-preview-item">
-                    <span class="chat-preview-ext">${escapeHtml(ext)}</span>
-                    <span class="chat-preview-name">${escapeHtml(file.name)}</span>
-                    <span class="chat-preview-badge">${this._uploading ? 'Enviando…' : 'Pronto'}</span>
-                    <button class="chat-preview-remove" onclick="Modules.Chat._clearPendingFile()">×</button>
-                </div>`;
-        }
-    },
-
-    _clearPendingFile() {
-        this._pendingFileUrl  = null;
-        this._pendingFileName = null;
-        this._pendingFileTipo = null;
-        this._uploading       = false;
-        const preview = document.getElementById('chat-file-preview');
-        if (preview) { preview.innerHTML = ''; preview.style.display = 'none'; }
-        this._updateSendBtn();
-    },
-
-    _updateSendBtn() {
-        const btn = document.getElementById('btn-chat-send');
-        if (!btn) return;
-        btn.disabled    = this._uploading;
-        btn.textContent = this._uploading ? 'Enviando…' : 'Enviar';
-    },
-
-    // ── Envio ─────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════
+    // ENVIO
+    // ══════════════════════════════════════════════════════════
     async send() {
-        const input    = document.getElementById('chat-input');
+        const input    = document.getElementById('chat-direct-input');
         const conteudo = input?.value?.trim() || '';
-        const temAnexo = !!this._pendingFileUrl;
+        if (!conteudo || !this._activeContact) return;
 
-        if ((!conteudo && !temAnexo) || this._uploading || !this._agendaId) return;
-
-        const btn = document.getElementById('btn-chat-send');
-        if (btn) btn.disabled = true;
-        input.value = '';
+        const sendBtn = document.querySelector('.chat-send-btn');
+        if (sendBtn) sendBtn.disabled = true;
+        input.value        = '';
         input.style.height = '';
 
-        const uid     = AppState.userProfile.id;
-        const payload = {
-            agenda_id:    this._agendaId,
-            remetente_id: uid,
-            conteudo:     conteudo || this._pendingFileName || 'arquivo',
-        };
-
-        if (temAnexo) {
-            payload.anexo_url  = this._pendingFileUrl;
-            payload.anexo_nome = this._pendingFileName;
-            payload.anexo_tipo = this._pendingFileTipo;
-        }
-
-        this._clearPendingFile();
-
         const { data: inserted, error } = await supabase
-            .from('mensagens')
-            .insert(payload)
-            .select('id, remetente_id, conteudo, created_at, lida, anexo_url, anexo_nome, anexo_tipo')
+            .from('mensagens_diretas')
+            .insert({
+                remetente_id:    this._uid,
+                destinatario_id: this._activeContact.id,
+                conteudo,
+            })
+            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida')
             .single();
 
         if (error) {
             showToast('Erro ao enviar mensagem', 'error');
             input.value = conteudo;
         } else {
-            this._appendBubble(inserted, true);
+            const container = document.getElementById('chat-direct-messages');
+            if (container) {
+                container.querySelector('.chat-empty')?.remove();
+                const d = new Date(inserted.created_at).toLocaleDateString('pt-BR');
+                const lastSep = container.querySelector('.chat-date-sep:last-of-type');
+                if (d !== lastSep?.dataset.date) this._appendDateSep(container, d);
+                this._appendBubble(container, inserted, true);
+            }
+            // Atualiza preview do contato
+            const c = this._contacts.find(x => x.id === this._activeContact.id);
+            if (c) { c.lastMsg = inserted; this._sortContacts(); this._renderContactList(); }
         }
 
-        if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
+        if (sendBtn) sendBtn.disabled = false;
         input.focus();
     },
 
-    handleKey(e) {
+    _handleKey(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             Modules.Chat.send();
@@ -354,64 +461,9 @@ Modules.Chat = {
         ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
     },
 
-    close() {
-        if (this._channel) {
-            supabase.removeChannel(this._channel);
-            this._channel = null;
-        }
-        this._agendaId  = null;
-        this._outroNome = null;
-        this._outroId   = null;
-        this._clearPendingFile();
-        closeModal('modal-chat');
+    // Chamado pelo Router ao sair da página (não tem hook, mas zeramos o flag)
+    _leave() {
+        this._onPage        = false;
+        this._activeContact = null;
     },
-
-    // ── Injeta HTML do modal uma única vez no body ────────────
-    _injectModal() {
-        if (this._injected) return;
-        this._injected = true;
-
-        const div = document.createElement('div');
-        div.innerHTML = `
-            <div class="modal-overlay" id="modal-chat">
-                <div class="modal-box modal-chat-box">
-                    <div class="chat-header">
-                        <div class="chat-header-info">
-                            <div class="chat-avatar">💬</div>
-                            <div>
-                                <div class="chat-header-title" id="chat-modal-title">Chat</div>
-                                <div class="chat-header-sub"   id="chat-modal-subtitle"></div>
-                            </div>
-                        </div>
-                        <button class="modal-close" onclick="Modules.Chat.close()">×</button>
-                    </div>
-
-                    <div class="chat-messages" id="chat-messages"></div>
-
-                    <div class="chat-footer">
-                        <input type="file" id="chat-file-input" style="display:none"
-                            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
-                            onchange="Modules.Chat._onFileSelect(event)">
-
-                        <div class="chat-file-preview" id="chat-file-preview" style="display:none"></div>
-
-                        <div class="chat-input-row">
-                            <button class="chat-attach-btn" title="Anexar arquivo"
-                                onclick="Modules.Chat._abrirSeletorArquivo()">📎</button>
-                            <textarea
-                                id="chat-input"
-                                class="chat-input"
-                                placeholder="Digite uma mensagem… (Enter para enviar)"
-                                rows="1"
-                                onkeydown="Modules.Chat.handleKey(event)"
-                            ></textarea>
-                            <button class="btn btn-primary chat-send-btn" id="btn-chat-send"
-                                onclick="Modules.Chat.send()">Enviar</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(div.firstElementChild);
-    }
 };

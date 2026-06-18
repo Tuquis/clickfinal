@@ -369,37 +369,38 @@ Modules.Dashboard = {
     // ── Mensagens não lidas ────────────────────────────────────
     async _fetchMensagensNaoLidas(uid) {
         const { data: msgs, error } = await supabase
-            .from('mensagens')
-            .select('id, agenda_id, remetente_id, conteudo, created_at, anexo_url, anexo_nome')
+            .from('mensagens_diretas')
+            .select('id, remetente_id, conteudo, created_at')
+            .eq('destinatario_id', uid)
             .eq('lida', false)
-            .neq('remetente_id', uid)
             .order('created_at', { ascending: false })
             .limit(30);
 
         if (error || !msgs || msgs.length === 0) return [];
 
-        // Agrupa por agenda_id
+        // Agrupa por remetente
         const grupos = {};
         msgs.forEach(m => {
-            if (!grupos[m.agenda_id]) grupos[m.agenda_id] = [];
-            grupos[m.agenda_id].push(m);
+            if (!grupos[m.remetente_id]) grupos[m.remetente_id] = [];
+            grupos[m.remetente_id].push(m);
         });
 
-        const agendaIds = Object.keys(grupos);
+        const remetenteIds = Object.keys(grupos);
 
-        const { data: aulas } = await supabase
-            .from('v_agenda_completa')
-            .select('id, aluno_id, aluno_nome, professor_id, professor_nome, data, horario, disciplina')
-            .in('id', agendaIds);
+        const { data: remetentes } = await supabase
+            .from('usuarios')
+            .select('id, nome')
+            .in('id', remetenteIds);
 
-        return agendaIds.map(aid => {
-            const aula       = (aulas || []).find(a => a.id === aid);
-            const grupo      = grupos[aid];
-            const ultima     = grupo[0];
-            const remetenteNome = aula
-                ? (ultima.remetente_id === aula.professor_id ? aula.professor_nome : aula.aluno_nome)
-                : '—';
-            return { agendaId: aid, aula, count: grupo.length, ultimaMsg: ultima, remetenteNome };
+        return remetenteIds.map(rid => {
+            const remetente = (remetentes || []).find(u => u.id === rid);
+            const grupo     = grupos[rid];
+            return {
+                remetenteId:   rid,
+                remetenteNome: remetente?.nome || '—',
+                count:         grupo.length,
+                ultimaMsg:     grupo[0],
+            };
         });
     },
 
@@ -407,18 +408,8 @@ Modules.Dashboard = {
         if (!notificacoes || notificacoes.length === 0) return '';
 
         const itens = notificacoes.map(n => {
-            const aula     = n.aula;
-            const dataFmt  = aula
-                ? new Date(aula.data + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })
-                : '';
-            const horario  = aula ? fmt.time(aula.horario) : '';
-            const disciplina = aula?.disciplina ? escapeHtml(aula.disciplina) + ' · ' : '';
-            const msg       = n.ultimaMsg;
-            const temAnexo  = !!msg.anexo_url;
-            const textoReal = msg.conteudo && msg.conteudo !== msg.anexo_nome ? msg.conteudo : '';
-            const trecho    = temAnexo && !textoReal
-                ? '📎 ' + escapeHtml(msg.anexo_nome || 'Arquivo')
-                : escapeHtml((textoReal || '').substring(0, 80)) + (textoReal?.length > 80 ? '…' : '');
+            const trecho = escapeHtml((n.ultimaMsg.conteudo || '').substring(0, 80)) +
+                ((n.ultimaMsg.conteudo || '').length > 80 ? '…' : '');
 
             return `
                 <div class="notif-msg-item">
@@ -429,10 +420,9 @@ Modules.Dashboard = {
                             ${n.count > 1 ? `<span class="notif-msg-count">${n.count} novas mensagens</span>` : '<span class="notif-msg-count">1 nova mensagem</span>'}
                         </div>
                         <div class="notif-msg-trecho">"${trecho}"</div>
-                        ${aula ? `<div class="notif-msg-aula">${disciplina}${dataFmt} às ${horario}</div>` : ''}
                     </div>
                     <button class="btn btn-primary btn-sm notif-msg-btn"
-                        onclick="Modules.Chat.open('${n.agendaId}')">
+                        onclick="Router.navigate('chat')">
                         Ver conversa
                     </button>
                 </div>

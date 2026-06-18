@@ -53,12 +53,14 @@ const SIDEBAR_ITEMS = {
         { id: 'relatorios',     icon: '📄', label: 'Lançar Aula' },
         { id: 'atividades',     icon: '📝', label: 'Enviar Atividade' },
         { id: 'disponibilidade',icon: '🕐', label: 'Minha Disponibilidade' },
+        { id: 'chat',           icon: '💬', label: 'Chat', badge: true },
     ],
     aluno: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },
         { id: 'agenda',         icon: '📅', label: 'Minhas Aulas' },
         { id: 'cronograma',     icon: '📋', label: 'Cronograma' },
         { id: 'atividades',     icon: '📝', label: 'Atividades' },
+        { id: 'chat',           icon: '💬', label: 'Chat', badge: true },
     ],
     psicopedagoga: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },
@@ -90,6 +92,7 @@ function renderSidebar() {
                 <button class="nav-item" id="nav-${item.id}" onclick="Router.navigate('${item.id}')">
                     <span class="nav-icon">${item.icon}</span>
                     <span class="nav-label">${item.label}</span>
+                    ${item.badge ? '<span class="nav-badge" id="chat-nav-badge" style="display:none">0</span>' : ''}
                 </button>
             `).join('')}
         </nav>
@@ -132,6 +135,7 @@ function registerRoutes() {
     reg('professores',     Modules.Professores);
     reg('auditoria',       Modules.Auditoria);
     reg('psicopedagogia',  Modules.Psicopedagogia);
+    reg('chat',            Modules.Chat);
 
     if (missing.length) {
         console.warn('Módulos não carregados:', missing.join(', '), '— recarregue a página.');
@@ -154,6 +158,13 @@ async function initApp() {
         renderSidebar();
         registerRoutes();
         await Router.navigate('dashboard');
+
+        // Inicia badge de mensagens não lidas (persiste em todas as páginas)
+        const uid  = AppState.userProfile?.id;
+        const role = AppState.role;
+        if (uid && (role === 'professor' || role === 'aluno')) {
+            Modules.Chat.initGlobal(uid, role);
+        }
 
         // Toggle sidebar mobile
         document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
