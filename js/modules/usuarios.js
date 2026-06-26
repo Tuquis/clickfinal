@@ -144,6 +144,11 @@ Modules.Usuarios = {
                                 <input type="url" class="input" id="u-psico-meet"
                                     placeholder="https://meet.google.com/..." />
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">WhatsApp da Psicopedagoga</label>
+                                <input type="tel" class="input" id="u-telefone-psico"
+                                    placeholder="(71) 99999-9999" />
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -319,7 +324,8 @@ Modules.Usuarios = {
         document.getElementById('u-pix').value = '';
         document.getElementById('u-link-meet').value = '';
         document.getElementById('u-telefone-professor').value = '';
-        document.getElementById('u-psico-meet').value = '';
+        document.getElementById('u-psico-meet').value     = '';
+        document.getElementById('u-telefone-psico').value = '';
         openModal('modal-usuario');
     },
 
@@ -366,9 +372,10 @@ Modules.Usuarios = {
             }
         } else if (u.role === 'psicopedagoga') {
             document.getElementById('u-psico-fields').style.display = 'block';
-            var psRes = await supabase.from('psico_info').select('link_meet').eq('usuario_id', id).single();
+            var psRes = await supabase.from('psico_info').select('link_meet, telefone').eq('usuario_id', id).single();
             if (psRes.data) {
-                document.getElementById('u-psico-meet').value = psRes.data.link_meet || '';
+                document.getElementById('u-psico-meet').value     = psRes.data.link_meet || '';
+                document.getElementById('u-telefone-psico').value = psRes.data.telefone  || '';
             }
         }
         openModal('modal-usuario');
@@ -455,7 +462,8 @@ Modules.Usuarios = {
 
         if (role === 'psicopedagoga') {
             var psicoMeet = document.getElementById('u-psico-meet').value.trim();
-            psicoData = { link_meet: psicoMeet || null };
+            var telefonePsico = document.getElementById('u-telefone-psico').value.trim();
+            psicoData = { link_meet: psicoMeet || null, telefone: telefonePsico || null };
         }
 
         if (errors.length) return showToast(errors[0], 'error');

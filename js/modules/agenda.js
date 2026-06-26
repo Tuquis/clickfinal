@@ -1073,7 +1073,7 @@ Modules.Agenda = {
 
         setLoading('#btn-save-agenda-psico', true);
         try {
-            const { error } = await supabase.from('agenda_psico').insert({
+            const { data: novaConsulta, error } = await supabase.from('agenda_psico').insert({
                 aluno_id:   alunoId,
                 psico_id:   psicoId,
                 data,
@@ -1081,11 +1081,12 @@ Modules.Agenda = {
                 link_meet:   meet || null,
                 observacoes: obs || null,
                 created_by:  AppState.userProfile.id
-            });
+            }).select('id').single();
             if (error) throw error;
 
             showToast('Consulta psicopedagógica agendada', 'success');
             closeModal('modal-agenda-psico');
+            if (novaConsulta?.id) this._notificarPsico(novaConsulta.id);
             await this.loadList();
         } catch (err) {
             showToast(err.message || 'Erro ao agendar', 'error');
@@ -1105,6 +1106,19 @@ Modules.Agenda = {
             else       console.log('WhatsApp de agendamento enviado ao professor');
         } catch (e) {
             console.warn('Notificação WhatsApp falhou:', e?.message || e);
+        }
+    },
+
+    async _notificarPsico(agendaPsicoId) {
+        if (!agendaPsicoId) return;
+        try {
+            const { error } = await supabase.functions.invoke('send-agendamento-psico', {
+                body: { agendaPsicoId }
+            });
+            if (error) console.warn('Notificação psico falhou:', error.message);
+            else       console.log('WhatsApp de agendamento enviado à psicopedagoga');
+        } catch (e) {
+            console.warn('Notificação psico falhou:', e?.message || e);
         }
     },
 

@@ -144,6 +144,16 @@ Deno.serve(async (req) => {
     .gte('horario', h28)
     .lte('horario', h32)
 
+  // ── Busca consultas psico para WHATSAPP 10 min (psicopedagoga) ─
+  const { data: consultasZap10 } = await db
+    .from('agenda_psico')
+    .select('id, data, horario, link_meet, psico_id, aluno_id')
+    .eq('data', today)
+    .eq('status', 'agendada')
+    .eq('lembrete_whatsapp_10min_enviado', false)
+    .gte('horario', h8)
+    .lte('horario', h12)
+
   const results: any[] = []
 
   // ── Envia EMAILS (professor) ──────────────────────────────────
@@ -336,6 +346,49 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Envia WHATSAPP 10 min (psicopedagoga) ────────────────────
+  for (const consulta of (consultasZap10 || [])) {
+    try {
+      const [{ data: psico }, { data: psicoInfo }, { data: aluno }] = await Promise.all([
+        db.from('usuarios').select('nome').eq('id', consulta.psico_id).single(),
+        db.from('psico_info').select('telefone').eq('usuario_id', consulta.psico_id).single(),
+        db.from('usuarios').select('nome').eq('id', consulta.aluno_id).single()
+      ])
+
+      const telefone = psicoInfo?.telefone
+      if (!telefone) {
+        await db.from('agenda_psico').update({ lembrete_whatsapp_10min_enviado: true }).eq('id', consulta.id)
+        results.push({ id: consulta.id, tipo: 'zapPsico10', status: 'sem_telefone' })
+        continue
+      }
+
+      const horarioFmt  = (consulta.horario ?? '').substring(0, 5)
+      const nomePsico   = psico?.nome  ?? 'Psicopedagoga'
+      const primeiroNome = nomePsico.split(' ')[0]
+      const nomeAluno   = aluno?.nome  ?? 'aluno'
+
+      let mensagem =
+        `⚡ ${primeiroNome}, sua consulta começa em *10 minutos* (às ${horarioFmt})!\n\n` +
+        `👤 Aluno: *${nomeAluno}*`
+
+      if (consulta.link_meet) {
+        mensagem += `\n\n🔗 Entre agora:\n${consulta.link_meet}`
+      }
+
+      mensagem += `\n\n_Click do Saber_`
+
+      await enviarWhatsApp(telefone, mensagem)
+      await db.from('agenda_psico').update({ lembrete_whatsapp_10min_enviado: true }).eq('id', consulta.id)
+      console.log(`WhatsApp psico 10min enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
+      results.push({ id: consulta.id, tipo: 'zapPsico10', status: 'enviado', para: normalizarTelefone(telefone) })
+
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`Erro WhatsApp psico 10min ${consulta.id}:`, msg)
+      results.push({ id: consulta.id, tipo: 'zapPsico10', status: 'erro', erro: msg })
+    }
+  }
+
   // ── Bom dia para professores com aula hoje (08:00) ───────────
   if (isMorningWindow) {
     // Busca todos os professor_id distintos com aula agendada hoje
@@ -379,17 +432,60 @@ Deno.serve(async (req) => {
         results.push({ tipo: 'bomDia', status: 'erro', erro: msg })
       }
     }
+
+    // ── Bom dia para psicopedagogas com consulta hoje ──────────
+    const { data: consultasHoje } = await db
+      .from('agenda_psico')
+      .select('psico_id')
+      .eq('data', today)
+      .eq('status', 'agendada')
+
+    const psicoIds = [...new Set((consultasHoje || []).map((c: any) => c.psico_id).filter(Boolean))]
+
+    for (const psicoId of psicoIds) {
+      try {
+        const [{ data: psico }, { data: psicoInfo }] = await Promise.all([
+          db.from('usuarios').select('nome').eq('id', psicoId).single(),
+          db.from('psico_info').select('telefone, lembrete_manha_data').eq('usuario_id', psicoId).single()
+        ])
+
+        if (!psicoInfo?.telefone) continue
+        if (psicoInfo.lembrete_manha_data === today) continue
+
+        const nomePsico    = psico?.nome ?? 'Psicopedagoga'
+        const primeiroNome = nomePsico.split(' ')[0]
+
+        const mensagem =
+          `Bom dia, ${primeiroNome}! 🌅\n\n` +
+          `Você tem consulta(s) psicopedagógica(s) agendada(s) para hoje. Verifique no dashboard os horários. 📅\n\n` +
+          `10 minutos antes de cada consulta você receberá o lembrete aqui também. 💜\n\n` +
+          `_Click do Saber_`
+
+        await enviarWhatsApp(psicoInfo.telefone, mensagem)
+        await db.from('psico_info').update({ lembrete_manha_data: today }).eq('usuario_id', psicoId)
+
+        console.log(`Bom dia psico enviado — ${nomePsico}`)
+        results.push({ tipo: 'bomDiaPsico', status: 'enviado', psico: nomePsico })
+
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`Erro bom dia psico ${psicoId}:`, msg)
+        results.push({ tipo: 'bomDiaPsico', status: 'erro', erro: msg })
+      }
+    }
   }
 
-  const emailEnviados    = results.filter(r => r.tipo === 'email'         && r.status === 'enviado').length
-  const zapEnviados      = results.filter(r => r.tipo === 'whatsapp'      && r.status === 'enviado').length
-  const zap10Enviados    = results.filter(r => r.tipo === 'whatsapp10'    && r.status === 'enviado').length
-  const zapProfEnviados  = results.filter(r => r.tipo === 'whatsappProf'  && r.status === 'enviado').length
-  const bomDiaEnviados   = results.filter(r => r.tipo === 'bomDia'        && r.status === 'enviado').length
-  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}`)
+  const emailEnviados      = results.filter(r => r.tipo === 'email'         && r.status === 'enviado').length
+  const zapEnviados        = results.filter(r => r.tipo === 'whatsapp'      && r.status === 'enviado').length
+  const zap10Enviados      = results.filter(r => r.tipo === 'whatsapp10'    && r.status === 'enviado').length
+  const zapProfEnviados    = results.filter(r => r.tipo === 'whatsappProf'  && r.status === 'enviado').length
+  const bomDiaEnviados     = results.filter(r => r.tipo === 'bomDia'        && r.status === 'enviado').length
+  const zapPsico10Enviados = results.filter(r => r.tipo === 'zapPsico10'    && r.status === 'enviado').length
+  const bomDiaPsicoEnv     = results.filter(r => r.tipo === 'bomDiaPsico'   && r.status === 'enviado').length
+  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}, psico10: ${zapPsico10Enviados}, bomDiaPsico: ${bomDiaPsicoEnv}`)
 
   return new Response(
-    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados, total: results.length, results }),
+    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados, zapPsico10Enviados, bomDiaPsicoEnv, total: results.length, results }),
     { headers: { 'Content-Type': 'application/json' } }
   )
 })
