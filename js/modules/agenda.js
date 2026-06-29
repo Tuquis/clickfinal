@@ -890,6 +890,20 @@ Modules.Agenda = {
         if (data && data < todayISO()) errors.push('A data não pode ser no passado');
         if (errors.length) return showToast(errors[0], 'error');
 
+        // Verifica conflito de horário para o professor
+        let conflitoQuery = supabase
+            .from('agenda_meet')
+            .select('id', { count: 'exact', head: true })
+            .eq('professor_id', professorId)
+            .eq('data',         data)
+            .eq('horario',      horario)
+            .neq('status',      'cancelada');
+        if (id) conflitoQuery = conflitoQuery.neq('id', id);
+        const { count: conflito } = await conflitoQuery;
+        if (conflito > 0) {
+            return showToast('Este professor já tem uma aula agendada nesse horário. Revise e tente em um novo horário.', 'error', 5000);
+        }
+
         setLoading('#btn-save-agenda', true);
         try {
             const payload = {
