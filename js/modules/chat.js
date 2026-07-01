@@ -297,9 +297,14 @@ Modules.Chat = {
         if (!mainEl) return;
 
         const initial = (contact.nome || '?').charAt(0).toUpperCase();
+        // Mobile: mostra painel de conversa (desliza para dentro)
+        const chatPage = document.querySelector('.chat-page');
+        if (chatPage) chatPage.classList.add('chat-conv-open');
+
         mainEl.innerHTML = `
             <div class="chat-window">
                 <div class="chat-window-header">
+                    <button class="chat-back-btn" onclick="Modules.Chat._backToContacts()" title="Voltar">&#8592;</button>
                     <div class="chat-contact-avatar">${initial}</div>
                     <div class="chat-window-title">${escapeHtml(contact.nome)}</div>
                 </div>
@@ -459,6 +464,14 @@ Modules.Chat = {
         const ta = e.target;
         ta.style.height = '';
         ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+    },
+
+    // Mobile: volta para lista de contatos
+    _backToContacts() {
+        const chatPage = document.querySelector('.chat-page');
+        if (chatPage) chatPage.classList.remove('chat-conv-open');
+        this._activeContact = null;
+        this._renderContactList();
     },
 
     // Chamado pelo Router ao sair da página (não tem hook, mas zeramos o flag)

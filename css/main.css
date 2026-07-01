@@ -3189,14 +3189,79 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     line-height: 1;
 }
 
-/* Responsivo */
+
+/* Botão voltar — só aparece no mobile */
+.chat-back-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: var(--color-text);
+    flex-shrink: 0;
+    transition: background var(--transition);
+}
+.chat-back-btn:hover { background: var(--color-surface-2); }
+
+/* Responsivo — mobile: uma tela por vez, estilo WhatsApp */
 @media (max-width: 768px) {
-    .chat-page { flex-direction: column; }
-    .chat-page-sidebar {
-        width: 100%;
-        max-height: 45vh;
-        border-right: none;
-        border-bottom: 1px solid var(--color-border);
+    .chat-page {
+        position: relative;
+        height: calc(100vh - var(--header-h));
+        overflow: hidden;
+        flex-direction: row;
     }
-    .chat-page-main { flex: 1; }
+
+    /* sidebar ocupa tela inteira e desliza para esquerda ao abrir conversa */
+    .chat-page-sidebar {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        max-height: none;
+        border-right: none;
+        border-bottom: none;
+        z-index: 1;
+        transform: translateX(0);
+        transition: transform .28s cubic-bezier(.4,0,.2,1);
+        will-change: transform;
+    }
+    .chat-page.chat-conv-open .chat-page-sidebar {
+        transform: translateX(-100%);
+        pointer-events: none;
+    }
+
+    /* painel de conversa começa fora da tela à direita */
+    .chat-page-main {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        transform: translateX(100%);
+        transition: transform .28s cubic-bezier(.4,0,.2,1);
+        will-change: transform;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+    }
+    .chat-page.chat-conv-open .chat-page-main {
+        transform: translateX(0);
+    }
+
+    /* botão voltar visível no mobile */
+    .chat-back-btn { display: flex; }
+
+    /* footer do chat — textarea não fica pequena demais */
+    .chat-window-footer {
+        padding: 8px 10px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+    .chat-window-footer .chat-input { font-size: 1rem; }
+    .chat-send-btn { height: 44px; padding: 0 16px; }
+
+    /* mensagens com mais espaço */
+    .chat-window-messages { padding: 12px 12px; }
 }
