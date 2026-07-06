@@ -154,6 +154,16 @@ Deno.serve(async (req) => {
     .gte('horario', h8)
     .lte('horario', h12)
 
+  // ── Busca consultas psico para WHATSAPP 30 min (responsável do aluno) ─
+  const { data: consultasZap30Resp } = await db
+    .from('agenda_psico')
+    .select('id, data, horario, link_meet, psico_id, aluno_id')
+    .eq('data', today)
+    .eq('status', 'agendada')
+    .eq('lembrete_whatsapp_30min_responsavel_enviado', false)
+    .gte('horario', h28)
+    .lte('horario', h32)
+
   const results: any[] = []
 
   // ── Envia EMAILS (professor) ──────────────────────────────────
@@ -389,6 +399,51 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Envia WHATSAPP 30 min (responsável do aluno — consulta psico) ──
+  for (const consulta of (consultasZap30Resp || [])) {
+    try {
+      const [{ data: aluno }, { data: alunoInfo }, { data: psico }] = await Promise.all([
+        db.from('usuarios').select('nome').eq('id', consulta.aluno_id).single(),
+        db.from('alunos_info').select('responsavel, telefone').eq('usuario_id', consulta.aluno_id).single(),
+        db.from('usuarios').select('nome').eq('id', consulta.psico_id).single()
+      ])
+
+      const telefone         = alunoInfo?.telefone
+      const nomeResponsavel  = alunoInfo?.responsavel || 'Responsável'
+      const primeiroNome     = nomeResponsavel.split(' ')[0]
+      const nomeAluno        = aluno?.nome ?? 'aluno'
+      const nomePsico        = psico?.nome ?? 'psicopedagoga'
+      const horarioFmt       = (consulta.horario ?? '').substring(0, 5)
+
+      if (!telefone) {
+        await db.from('agenda_psico').update({ lembrete_whatsapp_30min_responsavel_enviado: true }).eq('id', consulta.id)
+        results.push({ id: consulta.id, tipo: 'zapPsico30Resp', status: 'sem_telefone' })
+        continue
+      }
+
+      let mensagem =
+        `Olá, *${primeiroNome}*! 👋\n\n` +
+        `A consulta de *${nomeAluno}* com a psicopedagoga *${nomePsico}* está marcada para *daqui a 30 minutos* (às ${horarioFmt}).\n\n` +
+        `✅ Certifique-se de que *${nomeAluno}* está disponível e em um ambiente tranquilo para a sessão.`
+
+      if (consulta.link_meet) {
+        mensagem += `\n\n🔗 Link da sessão:\n${consulta.link_meet}`
+      }
+
+      mensagem += `\n\n_Click do Saber_`
+
+      await enviarWhatsApp(telefone, mensagem)
+      await db.from('agenda_psico').update({ lembrete_whatsapp_30min_responsavel_enviado: true }).eq('id', consulta.id)
+      console.log(`WhatsApp 30min responsável enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
+      results.push({ id: consulta.id, tipo: 'zapPsico30Resp', status: 'enviado', para: normalizarTelefone(telefone) })
+
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`Erro WhatsApp 30min responsável ${consulta.id}:`, msg)
+      results.push({ id: consulta.id, tipo: 'zapPsico30Resp', status: 'erro', erro: msg })
+    }
+  }
+
   // ── Bom dia para professores com aula hoje (08:00) ───────────
   if (isMorningWindow) {
     // Busca todos os professor_id distintos com aula agendada hoje
@@ -475,17 +530,18 @@ Deno.serve(async (req) => {
     }
   }
 
-  const emailEnviados      = results.filter(r => r.tipo === 'email'         && r.status === 'enviado').length
-  const zapEnviados        = results.filter(r => r.tipo === 'whatsapp'      && r.status === 'enviado').length
-  const zap10Enviados      = results.filter(r => r.tipo === 'whatsapp10'    && r.status === 'enviado').length
-  const zapProfEnviados    = results.filter(r => r.tipo === 'whatsappProf'  && r.status === 'enviado').length
-  const bomDiaEnviados     = results.filter(r => r.tipo === 'bomDia'        && r.status === 'enviado').length
-  const zapPsico10Enviados = results.filter(r => r.tipo === 'zapPsico10'    && r.status === 'enviado').length
-  const bomDiaPsicoEnv     = results.filter(r => r.tipo === 'bomDiaPsico'   && r.status === 'enviado').length
-  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}, psico10: ${zapPsico10Enviados}, bomDiaPsico: ${bomDiaPsicoEnv}`)
+  const emailEnviados        = results.filter(r => r.tipo === 'email'           && r.status === 'enviado').length
+  const zapEnviados          = results.filter(r => r.tipo === 'whatsapp'        && r.status === 'enviado').length
+  const zap10Enviados        = results.filter(r => r.tipo === 'whatsapp10'      && r.status === 'enviado').length
+  const zapProfEnviados      = results.filter(r => r.tipo === 'whatsappProf'    && r.status === 'enviado').length
+  const bomDiaEnviados       = results.filter(r => r.tipo === 'bomDia'          && r.status === 'enviado').length
+  const zapPsico10Enviados   = results.filter(r => r.tipo === 'zapPsico10'      && r.status === 'enviado').length
+  const bomDiaPsicoEnv       = results.filter(r => r.tipo === 'bomDiaPsico'     && r.status === 'enviado').length
+  const zapPsico30RespEnv    = results.filter(r => r.tipo === 'zapPsico30Resp'  && r.status === 'enviado').length
+  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}, psico10: ${zapPsico10Enviados}, bomDiaPsico: ${bomDiaPsicoEnv}, psico30Resp: ${zapPsico30RespEnv}`)
 
   return new Response(
-    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados, zapPsico10Enviados, bomDiaPsicoEnv, total: results.length, results }),
+    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados, zapPsico10Enviados, bomDiaPsicoEnv, zapPsico30RespEnv, total: results.length, results }),
     { headers: { 'Content-Type': 'application/json' } }
   )
 })
