@@ -624,7 +624,7 @@ Modules.Relatorios = {
                 observacoes:                observacoes || null,
                 camera_objecao:             camera_objecao,
                 camera_objecao_detalhe:     camera_objecao_detalhe || null
-            });
+            }).select('id').single();
 
             if (ins.error) throw ins.error;
 
@@ -641,6 +641,21 @@ Modules.Relatorios = {
             showToast('Relatório salvo! Saldo do aluno decrementado.', 'success', 4000);
             closeModal('modal-validar-aula');
             await this._loadList();
+
+            // Notifica via WhatsApp — busca o ID com fallback caso RLS não retorne no insert
+            var relId = ins.data?.id;
+            if (!relId) {
+                const { data: recente } = await supabase
+                    .from('relatorios')
+                    .select('id')
+                    .eq('professor_id', AppState.userProfile.id)
+                    .eq('aluno_id', alunoId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+                relId = recente?.id;
+            }
+            if (relId) this._notificarRelatorio(relId).catch((e) => console.warn('notify-relatorio:', e));
         } catch(err) {
             showToast(err.message || 'Erro ao salvar', 'error');
         } finally {
@@ -810,24 +825,8 @@ Modules.Relatorios = {
         setTimeout(function() { Modules.Relatorios.exportPDF(); }, 600);
     },
 
-    async exportPDF() {
-        var id = this._viewingId;
-        if (!id) return showToast('Abra o relatório primeiro', 'error');
-
-        try {
-            showToast('Gerando PDF...', 'info', 2000);
-
-            var res = await supabase
-                .from('relatorios')
-                .select(`*, aluno:usuarios!relatorios_aluno_id_fkey(nome), professor:usuarios!relatorios_professor_id_fkey(nome)`)
-                .eq('id', id)
-                .single();
-
-            var r = res.data;
-            if (!r) return showToast('Relatório não encontrado', 'error');
-
-            var alunoNome = (r.aluno && r.aluno.nome) || '—';
-            var profNome  = (r.professor && r.professor.nome) || '—';
+    // ── Gera o documento jsPDF a partir dos dados do relatório ───
+    _gerarDocPDF(r, alunoNome, profNome) {
 
             var habAcad  = (r.habilidades?.academicas || [])
                 .map(function(k) { return Modules.Relatorios._HAB_LABELS[k] || k; }).join('\n') || 'Nenhuma';
@@ -1021,12 +1020,59 @@ Modules.Relatorios = {
 
             drawFooter();
 
+            return doc;
+    },
+
+    async exportPDF() {
+        var id = this._viewingId;
+        if (!id) return showToast('Abra o relatório primeiro', 'error');
+        try {
+            showToast('Gerando PDF...', 'info', 2000);
+            var res = await supabase
+                .from('relatorios')
+                .select(`*, aluno:usuarios!relatorios_aluno_id_fkey(nome), professor:usuarios!relatorios_professor_id_fkey(nome)`)
+                .eq('id', id)
+                .single();
+            var r = res.data;
+            if (!r) return showToast('Relatório não encontrado', 'error');
+            var alunoNome   = (r.aluno && r.aluno.nome) || '—';
+            var profNome    = (r.professor && r.professor.nome) || '—';
+            var doc         = this._gerarDocPDF(r, alunoNome, profNome);
             var nomeArquivo = alunoNome.normalize('NFC').replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim().replace(/\s+/g, '-').toLowerCase();
             doc.save('relatorio-' + (nomeArquivo || id.substring(0, 8)) + '.pdf');
             showToast('PDF exportado', 'success');
         } catch(err) {
             showToast('Erro: ' + err.message, 'error');
         }
+    },
+
+    // ── Gera PDF exato (jsPDF) e envia para o WhatsApp administrativo ──
+    async _notificarRelatorio(relId) {
+        // Busca dados completos do relatório
+        var res = await supabase
+            .from('relatorios')
+            .select(`*, aluno:usuarios!relatorios_aluno_id_fkey(nome), professor:usuarios!relatorios_professor_id_fkey(nome)`)
+            .eq('id', relId)
+            .single();
+        var r = res.data;
+        if (!r) { console.warn('notify-relatorio: não encontrado', relId); return; }
+
+        var alunoNome   = (r.aluno && r.aluno.nome) || '—';
+        var profNome    = (r.professor && r.professor.nome) || '—';
+
+        // Gera o PDF com o mesmo código do botão "Exportar PDF"
+        var doc         = Modules.Relatorios._gerarDocPDF(r, alunoNome, profNome);
+        var pdfBase64   = doc.output('datauristring').split(',')[1];
+        var nomeArquivo = alunoNome.trim().split(/\s+/).slice(0,3)
+            .map(function(p){ return p.toLowerCase().replace(/[^a-z0-9]/g,''); })
+            .filter(Boolean).join('-') || 'aluno';
+        var filename    = 'Relatorio-' + nomeArquivo + '.pdf';
+
+        // Envia o PDF para a edge function (modo PDF — separado do texto que chega pelo trigger)
+        var { error: fnErr } = await supabase.functions.invoke('notify-relatorio', {
+            body: { pdfBase64, filename }
+        });
+        if (fnErr) console.warn('notify-relatorio pdf error:', fnErr);
     },
 
     // ── AULA SEM ALUNO ────────────────────────────────────────────
