@@ -183,7 +183,7 @@ Modules.Chat = {
         // Mensagens envolvendo o usuário atual (para preview + contagem unread)
         const { data: allMsgs } = await supabase
             .from('mensagens_diretas')
-            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida')
+            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida, anexo_url, anexo_nome, anexo_tipo')
             .or(`remetente_id.eq.${uid},destinatario_id.eq.${uid}`)
             .order('created_at', { ascending: false });
 
@@ -258,6 +258,9 @@ Modules.Chat = {
     _previewText(c) {
         if (!c.lastMsg) return '<em class="chat-no-msg">Sem mensagens</em>';
         const prefix = c.lastMsg.remetente_id === this._uid ? 'Você: ' : '';
+        if (!c.lastMsg.conteudo && c.lastMsg.anexo_url) {
+            return `<span>${escapeHtml(prefix)}📷 Foto</span>`;
+        }
         const text   = escapeHtml((c.lastMsg.conteudo || '').substring(0, 42));
         const sufx   = (c.lastMsg.conteudo || '').length > 42 ? '…' : '';
         return `<span>${escapeHtml(prefix)}${text}${sufx}</span>`;
@@ -287,6 +290,7 @@ Modules.Chat = {
         if (!contact) return;
 
         this._activeContact = contact;
+        this._clearPendingFile();
 
         // Marca item ativo na lista
         document.querySelectorAll('.chat-contact-item').forEach(el => {
@@ -311,7 +315,11 @@ Modules.Chat = {
                 <div class="chat-window-messages" id="chat-direct-messages">
                     <div class="loader-inline" style="padding:32px"></div>
                 </div>
+                <div class="chat-file-preview" id="chat-file-preview" style="display:none"></div>
                 <div class="chat-window-footer">
+                    <input type="file" id="chat-file-input" accept="image/*" style="display:none"
+                        onchange="Modules.Chat._onFileSelect(event)">
+                    <button class="chat-attach-btn" title="Enviar foto" onclick="Modules.Chat._abrirSeletorArquivo()">📎</button>
                     <textarea class="chat-input" id="chat-direct-input"
                         placeholder="Digite uma mensagem… (Enter para enviar)"
                         rows="1"
@@ -339,7 +347,7 @@ Modules.Chat = {
 
         const { data: msgs, error } = await supabase
             .from('mensagens_diretas')
-            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida')
+            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida, anexo_url, anexo_nome, anexo_tipo')
             .or(`and(remetente_id.eq.${uid},destinatario_id.eq.${contactId}),and(remetente_id.eq.${contactId},destinatario_id.eq.${uid})`)
             .order('created_at', { ascending: true });
 
@@ -377,12 +385,20 @@ Modules.Chat = {
 
         if (document.querySelector(`[data-chat-id="${msg.id}"]`)) return;
 
+        const anexoHtml = msg.anexo_url ? `
+            <div class="chat-attachment">
+                <img src="${msg.anexo_url}" class="chat-attach-img"
+                     alt="${escapeHtml(msg.anexo_nome || 'imagem')}"
+                     onclick="window.open('${msg.anexo_url}','_blank')" loading="lazy">
+            </div>` : '';
+
         const div = document.createElement('div');
         div.className      = 'chat-msg ' + (isMine ? 'chat-msg-mine' : 'chat-msg-other') + (animate ? ' chat-msg-new' : '');
         div.dataset.chatId = msg.id;
         div.innerHTML = `
-            <div class="chat-bubble">
-                <div class="chat-bubble-text">${escapeHtml(msg.conteudo)}</div>
+            <div class="chat-bubble${msg.anexo_url && msg.conteudo ? ' chat-bubble-mixed' : ''}">
+                ${anexoHtml}
+                ${msg.conteudo ? `<div class="chat-bubble-text">${escapeHtml(msg.conteudo)}</div>` : ''}
             </div>
             <div class="chat-msg-time">${hora}</div>
         `;
@@ -413,26 +429,127 @@ Modules.Chat = {
     },
 
     // ══════════════════════════════════════════════════════════
+    // ANEXO — envio de foto
+    // ══════════════════════════════════════════════════════════
+    _abrirSeletorArquivo() {
+        document.getElementById('chat-file-input')?.click();
+    },
+
+    async _onFileSelect(e) {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            showToast('Apenas imagens são permitidas', 'error');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('Imagem muito grande. Máximo: 10 MB', 'error');
+            return;
+        }
+
+        this._pendingFileName = file.name;
+        this._pendingFileTipo = file.type;
+        this._pendingFileUrl  = null;
+        this._uploading       = true;
+        this._updateSendBtn();
+        this._showFilePreview(file);
+
+        const url = await this._uploadFile(file);
+        this._uploading = false;
+
+        if (url) {
+            this._pendingFileUrl = url;
+        } else {
+            showToast('Falha ao enviar a imagem. Tente novamente.', 'error');
+            this._clearPendingFile();
+        }
+        this._updateSendBtn();
+    },
+
+    async _uploadFile(file) {
+        const ext  = file.name.includes('.') ? file.name.split('.').pop() : 'jpg';
+        const path = `${this._uid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+        const { error } = await supabase.storage
+            .from('chat-anexos')
+            .upload(path, file, { contentType: file.type, upsert: false });
+
+        if (error) { console.error('Upload error:', error); return null; }
+
+        const { data: urlData } = supabase.storage.from('chat-anexos').getPublicUrl(path);
+        return urlData?.publicUrl || null;
+    },
+
+    _showFilePreview(file) {
+        const preview = document.getElementById('chat-file-preview');
+        if (!preview) return;
+        preview.style.display = 'flex';
+
+        const reader = new FileReader();
+        reader.onload = ev => {
+            preview.innerHTML = `
+                <div class="chat-preview-item">
+                    <img src="${ev.target.result}" class="chat-preview-img" alt="">
+                    <span class="chat-preview-name">${escapeHtml(file.name)}</span>
+                    <span class="chat-preview-badge">${this._uploading ? 'Enviando…' : 'Pronto'}</span>
+                    <button class="chat-preview-remove" onclick="Modules.Chat._clearPendingFile()">×</button>
+                </div>`;
+        };
+        reader.readAsDataURL(file);
+    },
+
+    _clearPendingFile() {
+        this._pendingFileUrl  = null;
+        this._pendingFileName = null;
+        this._pendingFileTipo = null;
+        this._uploading       = false;
+        const preview = document.getElementById('chat-file-preview');
+        if (preview) { preview.innerHTML = ''; preview.style.display = 'none'; }
+        this._updateSendBtn();
+    },
+
+    _updateSendBtn() {
+        const btn = document.querySelector('.chat-send-btn');
+        if (btn) {
+            btn.disabled    = this._uploading;
+            btn.textContent = this._uploading ? 'Enviando…' : 'Enviar';
+        }
+        const badge = document.querySelector('#chat-file-preview .chat-preview-badge');
+        if (badge) badge.textContent = this._uploading ? 'Enviando…' : 'Pronto';
+    },
+
+    // ══════════════════════════════════════════════════════════
     // ENVIO
     // ══════════════════════════════════════════════════════════
     async send() {
         const input    = document.getElementById('chat-direct-input');
         const conteudo = input?.value?.trim() || '';
-        if (!conteudo || !this._activeContact) return;
+        const temAnexo = !!this._pendingFileUrl;
+        if ((!conteudo && !temAnexo) || this._uploading || !this._activeContact) return;
 
         const sendBtn = document.querySelector('.chat-send-btn');
         if (sendBtn) sendBtn.disabled = true;
         input.value        = '';
         input.style.height = '';
 
+        const payload = {
+            remetente_id:    this._uid,
+            destinatario_id: this._activeContact.id,
+            conteudo:        conteudo || null,
+        };
+        if (temAnexo) {
+            payload.anexo_url  = this._pendingFileUrl;
+            payload.anexo_nome = this._pendingFileName;
+            payload.anexo_tipo = this._pendingFileTipo;
+        }
+        this._clearPendingFile();
+
         const { data: inserted, error } = await supabase
             .from('mensagens_diretas')
-            .insert({
-                remetente_id:    this._uid,
-                destinatario_id: this._activeContact.id,
-                conteudo,
-            })
-            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida')
+            .insert(payload)
+            .select('id, remetente_id, destinatario_id, conteudo, created_at, lida, anexo_url, anexo_nome, anexo_tipo')
             .single();
 
         if (error) {
