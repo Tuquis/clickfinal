@@ -369,7 +369,8 @@ Modules.Cronograma = {
 
         let query = supabase
             .from('cronograma')
-            .select(`*, aluno:usuarios!cronograma_aluno_id_fkey(id,nome), tarefas:cronograma_tarefas(*)`)
+            .select(`*, aluno:usuarios!cronograma_aluno_id_fkey(id,nome),
+                tarefas:cronograma_tarefas(*, professor:usuarios!cronograma_tarefas_professor_id_fkey(nome))`)
             .order('semana_inicio', { ascending: false });
 
         if (role === 'aluno') query = query.eq('aluno_id', uid);
@@ -404,10 +405,11 @@ Modules.Cronograma = {
             const DIAS_FULL = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
             const renderTarefa = t => {
-                const pendente  = t.status === 'pendente';
-                const concluida = t.status === 'concluida';
-                const clicavel  = isAluno && pendente;
-                const temEv     = !!t.evidencia_url;
+                const pendente    = t.status === 'pendente';
+                const concluida   = t.status === 'concluida';
+                const clicavel    = isAluno && pendente;
+                const temEv       = !!t.evidencia_url;
+                const isAtividade = !!t.atividade_id;
                 return `
                 <div class="tarefa-item ${concluida ? 'tarefa-concluida' : ''} ${clicavel ? 'tarefa-clicavel' : ''}"
                     ${clicavel ? `data-tid="${t.id}" data-aid="${c.aluno_id}" data-desc="${escapeHtml(t.descricao)}" onclick="Modules.Cronograma._openEvFromEl(this)"` : ''}>
@@ -418,6 +420,7 @@ Modules.Cronograma = {
                     </div>
                     <div class="tarefa-body">
                         <span class="tarefa-desc">${escapeHtml(t.descricao)}</span>
+                        ${isAtividade ? `<div class="tarefa-atividade-badge">📌 Atividade enviada por <strong>${escapeHtml(t.professor?.nome || 'professor')}</strong>${t.prazo ? ` — Prazo: ${fmt.date(t.prazo)}` : ''}</div>` : ''}
                         ${t.informacoes ? `<div class="tarefa-info">${escapeHtml(t.informacoes)}</div>` : ''}
                         ${concluida && t.concluida_em
                             ? `<span class="tarefa-concluida-em">Concluída em ${fmt.datetime(t.concluida_em)}</span>`

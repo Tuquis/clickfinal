@@ -877,6 +877,12 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .tarefa-concluida-em { display: block; font-size: 0.7rem; color: var(--color-text-3); }
 .tarefa-evidencia-link { font-size: 0.75rem; color: var(--color-blue); }
 .tarefa-info { font-size: 0.72rem; color: var(--color-text-3); margin-top: 2px; font-style: italic; }
+.tarefa-atividade-badge {
+    font-size: 0.72rem;
+    color: var(--color-primary);
+    margin-top: 2px;
+}
+.tarefa-atividade-badge strong { color: inherit; }
 
 /* Tarefa clicável (aluno) */
 .tarefa-clicavel {
