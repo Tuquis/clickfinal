@@ -883,6 +883,94 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     margin-top: 2px;
 }
 .tarefa-atividade-badge strong { color: inherit; }
+.tarefa-atividade-badge-admin { color: var(--color-text-3); }
+
+.tarefa-prazo-badge {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.tarefa-prazo-atrasada { background: var(--color-red-bg);    color: var(--color-red); }
+.tarefa-prazo-vencendo { background: var(--color-yellow-bg); color: var(--color-yellow); }
+
+/* CRONOGRAMA — grid de cards por aluno (visão admin) */
+.aluno-cron-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.aluno-cron-card {
+    aspect-ratio: 1 / 1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+.aluno-cron-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--color-primary);
+}
+.aluno-cron-card-atrasado { border-color: var(--color-red); }
+.aluno-cron-card-vencendo { border-color: var(--color-yellow); }
+
+.aluno-cron-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--color-surface-2);
+    color: var(--color-primary);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.aluno-cron-nome   { font-weight: 600; font-size: 0.875rem; }
+
+.aluno-cron-prazo {
+    font-size: 0.72rem;
+    color: var(--color-text-2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+}
+.aluno-cron-prazo strong    { color: var(--color-text); }
+.aluno-cron-prazo-txt       { font-size: 0.68rem; color: var(--color-text-3); }
+.aluno-cron-prazo.prazo-atrasado strong,
+.aluno-cron-prazo.prazo-atrasado .aluno-cron-prazo-txt { color: var(--color-red); }
+.aluno-cron-prazo.prazo-vencendo strong,
+.aluno-cron-prazo.prazo-vencendo .aluno-cron-prazo-txt { color: var(--color-yellow); }
+
+.aluno-cron-ring   { width: 44px; height: 44px; }
+.aluno-cron-ring svg { width: 100%; height: 100%; }
+
+.aluno-cron-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: center;
+}
+.stat-chip {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+.stat-chip-danger  { background: var(--color-red-bg);    color: var(--color-red); }
+.stat-chip-warning { background: var(--color-yellow-bg); color: var(--color-yellow); }
+.stat-chip-muted   { background: var(--color-surface-2); color: var(--color-text-3); }
 
 /* Tarefa clicável (aluno) */
 .tarefa-clicavel {

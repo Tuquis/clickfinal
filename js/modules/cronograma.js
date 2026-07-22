@@ -8,7 +8,7 @@ Modules.Cronograma = {
 
     _DIAS: ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
 
-    async render() {
+    async render(params = {}) {
         const isAdmin = Auth.can('admin');
         const isAluno = Auth.can('aluno');
 
@@ -145,6 +145,22 @@ Modules.Cronograma = {
                     </div>
                 </div>
             </div>
+
+            <!-- ═══ MODAL DETALHE DO ALUNO (admin) ═══ -->
+            <div class="modal-overlay" id="modal-aluno-cronograma">
+                <div class="modal-box modal-lg">
+                    <div class="modal-header">
+                        <div>
+                            <h3 id="modal-aluno-cron-titulo">Aluno</h3>
+                            <p id="modal-aluno-cron-semana" style="font-size:.8rem;color:var(--color-text-3);margin-top:2px"></p>
+                        </div>
+                        <button class="modal-close" onclick="closeModal('modal-aluno-cronograma')">×</button>
+                    </div>
+                    <div class="modal-body" id="modal-aluno-cron-body">
+                        <div class="loader-inline"></div>
+                    </div>
+                </div>
+            </div>
         `);
 
         if (isAdmin) {
@@ -160,6 +176,11 @@ Modules.Cronograma = {
 
         this._tarefasPorDia = {};
         await this._loadList();
+
+        // Veio de um alerta do dashboard: abre direto o modal desse aluno
+        if (isAdmin && params?.alunoId) {
+            this._abrirDetalheAluno(params.alunoId);
+        }
     },
 
     // ── ABERTURA DO DIA ─────────────────────────────────────────
@@ -382,6 +403,11 @@ Modules.Cronograma = {
         if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
         if (!data?.length) { container.innerHTML = emptyState('Nenhum cronograma encontrado'); return; }
 
+        if (role === 'admin') {
+            this._renderAdminGrid(container, data);
+            return;
+        }
+
         container.innerHTML = data.map(c => {
             const tarefas   = c.tarefas || [];
             const concluidas = tarefas.filter(t => t.status === 'concluida').length;
@@ -478,6 +504,203 @@ Modules.Cronograma = {
         }).join('');
     },
 
+    // ── VISÃO ADMIN: CARDS POR ALUNO ──────────────────────────────
+
+    // Diferença em dias entre hoje e uma data (YYYY-MM-DD). Negativo = já passou.
+    _diffDias(dataStr) {
+        if (!dataStr) return null;
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const d = new Date(dataStr + 'T00:00:00');
+        return Math.round((d - hoje) / 86400000);
+    },
+
+    // Prazo efetivo de uma tarefa: o prazo da atividade (quando veio de uma
+    // atividade do professor) ou, na falta dele, a Data Final do cronograma.
+    _statusPrazo(t, semanaFallback) {
+        if (t.status === 'concluida') return 'concluida';
+        const diffDias = this._diffDias(t.prazo || semanaFallback);
+        if (diffDias === null) return 'ok';
+        if (diffDias < 0) return 'atrasada';
+        if (diffDias <= 2) return 'vencendo';
+        return 'ok';
+    },
+
+    // Texto amigável de contagem regressiva para um prazo (YYYY-MM-DD)
+    _textoPrazo(diffDias) {
+        if (diffDias === null) return '';
+        if (diffDias < 0)  return `Vencido há ${Math.abs(diffDias)} dia${Math.abs(diffDias) > 1 ? 's' : ''}`;
+        if (diffDias === 0) return 'Vence hoje';
+        if (diffDias === 1) return 'Vence amanhã';
+        return `Vence em ${diffDias} dias`;
+    },
+
+    // Agrupa os cronogramas por aluno e calcula os números da semana ativa
+    // (a mais recente) de cada um. Preenche this._gruposAluno para o modal de detalhe.
+    _computeResumosPorAluno(data) {
+        const grupos = {};
+        data.forEach(c => {
+            if (!grupos[c.aluno_id]) grupos[c.aluno_id] = { aluno: c.aluno, cronogramas: [] };
+            grupos[c.aluno_id].cronogramas.push(c);
+        });
+
+        this._gruposAluno = {};
+
+        return Object.values(grupos).map(g => {
+            // Semana ativa = a mais recente ("Data Final" mais alta) desse aluno
+            const semanaAtual = g.cronogramas.reduce(
+                (max, c) => (!max || c.semana_inicio > max) ? c.semana_inicio : max, null
+            );
+            const cronogramasSemana = g.cronogramas.filter(c => c.semana_inicio === semanaAtual);
+            const tarefas = cronogramasSemana.flatMap(c => c.tarefas || []);
+
+            const total      = tarefas.length;
+            const concluidas = tarefas.filter(t => t.status === 'concluida').length;
+            const pendentes  = tarefas.filter(t => t.status !== 'concluida');
+            const atrasadas  = pendentes.filter(t => this._statusPrazo(t, semanaAtual) === 'atrasada').length;
+            const vencendo   = pendentes.filter(t => this._statusPrazo(t, semanaAtual) === 'vencendo').length;
+
+            // Prazo final exibido no card: o vencimento mais próximo entre as
+            // tarefas ainda pendentes (ou a Data Final do cronograma, se nenhuma tiver prazo próprio)
+            const prazosPendentes = pendentes.map(t => t.prazo || semanaAtual).filter(Boolean).sort();
+            const prazoFinal = prazosPendentes[0] || semanaAtual;
+            const prazoDiff  = this._diffDias(prazoFinal);
+
+            this._gruposAluno[g.aluno.id] = { aluno: g.aluno, semanaAtual, cronogramasSemana, tarefas };
+
+            return { alunoId: g.aluno.id, nome: g.aluno?.nome || '—', semanaAtual, prazoFinal, prazoDiff, total, concluidas, atrasadas, vencendo };
+        });
+    },
+
+    // Quem está pior (mais atrasadas/vencendo) aparece primeiro
+    _ordenarPorUrgencia(resumos) {
+        return resumos.slice().sort((a, b) =>
+            (b.atrasadas - a.atrasadas) || (b.vencendo - a.vencendo) || a.nome.localeCompare(b.nome)
+        );
+    },
+
+    _renderAdminGrid(container, data) {
+        const resumos = this._ordenarPorUrgencia(this._computeResumosPorAluno(data));
+        container.innerHTML = `<div class="aluno-cron-grid">${resumos.map(r => this._renderAlunoCard(r)).join('')}</div>`;
+    },
+
+    // Usado pelo Dashboard: alunos com tarefa atrasada ou vencendo em até 2 dias
+    async carregarResumoAlertas() {
+        const { data, error } = await supabase
+            .from('cronograma')
+            .select(`*, aluno:usuarios!cronograma_aluno_id_fkey(id,nome),
+                tarefas:cronograma_tarefas(*, professor:usuarios!cronograma_tarefas_professor_id_fkey(nome))`)
+            .order('semana_inicio', { ascending: false });
+
+        if (error || !data?.length) return [];
+
+        const resumos = this._computeResumosPorAluno(data).filter(r => r.atrasadas > 0 || r.vencendo > 0);
+        return this._ordenarPorUrgencia(resumos);
+    },
+
+    _renderAlunoCard(r) {
+        const pct    = r.total > 0 ? Math.round((r.concluidas / r.total) * 100) : 0;
+        const alerta = r.atrasadas > 0 ? 'aluno-cron-card-atrasado' : r.vencendo > 0 ? 'aluno-cron-card-vencendo' : '';
+        const prazoClasse = r.prazoDiff === null ? '' : r.prazoDiff < 0 ? 'prazo-atrasado' : r.prazoDiff <= 2 ? 'prazo-vencendo' : '';
+
+        return `
+            <div class="aluno-cron-card ${alerta}" onclick="Modules.Cronograma._abrirDetalheAluno('${r.alunoId}')">
+                <div class="aluno-cron-avatar">${escapeHtml(r.nome.charAt(0).toUpperCase())}</div>
+                <div class="aluno-cron-nome">${escapeHtml(r.nome)}</div>
+                <div class="aluno-cron-prazo ${prazoClasse}">
+                    Prazo final: <strong>${fmt.date(r.prazoFinal)}</strong>
+                    ${r.prazoDiff !== null ? `<span class="aluno-cron-prazo-txt">${this._textoPrazo(r.prazoDiff)}</span>` : ''}
+                </div>
+                <div class="aluno-cron-ring">
+                    <svg viewBox="0 0 36 36">
+                        <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                        <circle cx="18" cy="18" r="15" fill="none" stroke="#6366f1" stroke-width="3"
+                            stroke-dasharray="${pct * 0.942} 100" stroke-linecap="round"
+                            transform="rotate(-90 18 18)"/>
+                        <text x="18" y="22" text-anchor="middle" font-size="8" fill="#374151">${pct}%</text>
+                    </svg>
+                </div>
+                <div class="aluno-cron-stats">
+                    ${r.atrasadas > 0 ? `<span class="stat-chip stat-chip-danger">🔴 ${r.atrasadas} atrasada${r.atrasadas > 1 ? 's' : ''}</span>` : ''}
+                    ${r.vencendo  > 0 ? `<span class="stat-chip stat-chip-warning">🟡 ${r.vencendo} vencendo</span>` : ''}
+                    <span class="stat-chip stat-chip-muted">✅ ${r.concluidas}/${r.total}</span>
+                </div>
+            </div>
+        `;
+    },
+
+    _abrirDetalheAluno(alunoId) {
+        const grupo = this._gruposAluno?.[alunoId];
+        if (!grupo) return;
+
+        document.getElementById('modal-aluno-cron-titulo').textContent = grupo.aluno?.nome || '';
+        document.getElementById('modal-aluno-cron-semana').textContent = 'Semana: ' + fmt.date(grupo.semanaAtual);
+
+        const porDia = {};
+        const semDia = [];
+        grupo.tarefas.forEach(t => {
+            if (t.dia_semana !== null && t.dia_semana !== undefined) {
+                if (!porDia[t.dia_semana]) porDia[t.dia_semana] = [];
+                porDia[t.dia_semana].push(t);
+            } else {
+                semDia.push(t);
+            }
+        });
+
+        const DIAS_FULL = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+
+        const renderTarefaAdmin = t => {
+            const concluida    = t.status === 'concluida';
+            const isAtividade  = !!t.atividade_id;
+            const statusPrazo  = this._statusPrazo(t, grupo.semanaAtual);
+            const badgePrazo   = statusPrazo === 'atrasada'
+                ? `<span class="tarefa-prazo-badge tarefa-prazo-atrasada">🔴 Atrasada</span>`
+                : statusPrazo === 'vencendo'
+                    ? `<span class="tarefa-prazo-badge tarefa-prazo-vencendo">🟡 Vence em breve</span>`
+                    : '';
+
+            return `
+            <div class="tarefa-item ${concluida ? 'tarefa-concluida' : ''}">
+                <div class="tarefa-check"><span class="check-icon">${concluida ? '✓' : '○'}</span></div>
+                <div class="tarefa-body">
+                    <span class="tarefa-desc">${escapeHtml(t.descricao)}</span>
+                    ${isAtividade
+                        ? `<div class="tarefa-atividade-badge">📌 Atividade enviada por <strong>${escapeHtml(t.professor?.nome || 'professor')}</strong>${t.prazo ? ` — Prazo: ${fmt.date(t.prazo)}` : ''}</div>`
+                        : `<div class="tarefa-atividade-badge tarefa-atividade-badge-admin">🗓️ Adicionada pelo admin</div>`}
+                    ${t.informacoes ? `<div class="tarefa-info">${escapeHtml(t.informacoes)}</div>` : ''}
+                    ${concluida && t.concluida_em
+                        ? `<span class="tarefa-concluida-em">Concluída em ${fmt.datetime(t.concluida_em)}</span>`
+                        : ''}
+                </div>
+                ${badgePrazo}
+                ${t.evidencia_url ? `<a href="${escapeHtml(t.evidencia_url)}" target="_blank" class="tarefa-ev-btn" onclick="event.stopPropagation()">📎 Evidência</a>` : ''}
+            </div>`;
+        };
+
+        const corpo = Object.keys(porDia).length
+            ? Object.entries(porDia)
+                .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                .map(([dia, ts]) => `
+                    <div class="cron-dia-section">
+                        <div class="cron-dia-label-list">${DIAS_FULL[parseInt(dia)]}</div>
+                        ${ts.map(renderTarefaAdmin).join('')}
+                    </div>
+                `).join('') + semDia.map(renderTarefaAdmin).join('')
+            : semDia.map(renderTarefaAdmin).join('') || '<p class="text-muted small">Sem tarefas cadastradas</p>';
+
+        document.getElementById('modal-aluno-cron-body').innerHTML = `
+            <div class="tarefas-list">${corpo}</div>
+            <div class="cronograma-footer" style="text-align:left;display:flex;flex-wrap:wrap;gap:8px">
+                ${grupo.cronogramasSemana.map(c => `
+                    <button class="btn btn-ghost btn-sm text-danger"
+                        onclick="Modules.Cronograma.deleteCronograma('${c.id}')">Excluir "${escapeHtml(c.titulo)}"</button>
+                `).join('')}
+            </div>
+        `;
+
+        openModal('modal-aluno-cronograma');
+    },
+
     // ── EVIDÊNCIA ────────────────────────────────────────────────
 
     _openEvFromEl(el) {
@@ -572,6 +795,7 @@ Modules.Cronograma = {
         if (error) return showToast(error.message, 'error');
 
         showToast('Cronograma excluído', 'success');
+        closeModal('modal-aluno-cronograma');
         await this._loadList();
     }
 };

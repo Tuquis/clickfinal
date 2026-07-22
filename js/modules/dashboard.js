@@ -44,11 +44,15 @@ Modules.Dashboard = {
             .eq('status', 'atrasado')
             .limit(5);
 
+        const alertasCronograma = await Modules.Cronograma.carregarResumoAlertas();
+
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Dashboard</h1>
                 <span class="page-subtitle">${new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' })}</span>
             </div>
+
+            ${Modules.Dashboard._alertaCronogramaHtml(alertasCronograma)}
 
             <div class="stats-grid">
                 ${Modules.Dashboard._statCard('Alunos Ativos', stats?.total_alunos || 0, '🎓', 'stat-blue')}
@@ -442,6 +446,61 @@ Modules.Dashboard = {
                 </div>
             </div>
         `;
+    },
+
+    // ── Alerta: cronograma atrasado ou perto do prazo (admin) ──
+    _alertaCronogramaHtml(alertas) {
+        if (!alertas || alertas.length === 0) return '';
+
+        const LIMITE = 8;
+        const visiveis = alertas.slice(0, LIMITE);
+        const restantes = alertas.length - visiveis.length;
+
+        const itens = visiveis.map(a => {
+            const emAtraso  = a.atrasadas > 0;
+            const textoQtd  = emAtraso
+                ? `${a.atrasadas} tarefa${a.atrasadas > 1 ? 's' : ''} atrasada${a.atrasadas > 1 ? 's' : ''}`
+                : `${a.vencendo} tarefa${a.vencendo > 1 ? 's' : ''} perto do prazo`;
+
+            return `
+                <div class="notif-msg-item">
+                    <div class="notif-msg-avatar">${emAtraso ? '🔴' : '🟡'}</div>
+                    <div class="notif-msg-body">
+                        <div class="notif-msg-de">
+                            <strong>${escapeHtml(a.nome)}</strong>
+                            <span class="notif-msg-count">${textoQtd}</span>
+                        </div>
+                        <div class="notif-msg-trecho">
+                            Prazo final: ${fmt.date(a.prazoFinal)} — ${Modules.Cronograma._textoPrazo(a.prazoDiff)}
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm notif-msg-btn"
+                        onclick="Modules.Dashboard._verCronogramaAluno('${a.alunoId}')">
+                        Ver cronograma
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="card notif-msg-card" style="border-left:3px solid var(--color-red)">
+                <div class="card-header notif-msg-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="notif-msg-dot" style="background:var(--color-red)"></span>
+                        <h3>Alunos com cronograma atrasado ou perto do prazo</h3>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('cronograma')">Ver todos</button>
+                </div>
+                <div class="notif-msg-list">
+                    ${itens}
+                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aluno${restantes > 1 ? 's' : ''}…</p>` : ''}
+                </div>
+            </div>
+        `;
+    },
+
+    async _verCronogramaAluno(alunoId) {
+        await Router.navigate('cronograma', { alunoId });
     },
 
     _respostasHtml(respostas) {
