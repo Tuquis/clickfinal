@@ -12,13 +12,8 @@ Modules.Financeiro = {
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Financeiro</h1>
-                ${isAdmin ? `<button class="btn btn-primary" onclick="Modules.Financeiro.openCreate()">+ Nova Cobrança</button>` : ''}
+                ${isAdmin ? `<button class="btn btn-primary" onclick="Modules.Financeiro.openCreate()">+ Nova Mensalidade</button>` : ''}
             </div>
-
-            ${isAdmin ? `
-            <div class="stats-financeiro" id="stats-fin">
-                <div class="loader-inline"></div>
-            </div>` : ''}
 
             <div class="card">
                 <div class="card-toolbar">
@@ -32,21 +27,17 @@ Modules.Financeiro = {
                     <select class="input" id="filter-fin-aluno" onchange="Modules.Financeiro._applyFilter()">
                         <option value="">Todos os alunos</option>
                     </select>` : ''}
-                    <label style="display:flex;align-items:center;gap:6px;font-size:.8125rem;color:var(--color-text-2);cursor:pointer;white-space:nowrap;">
-                        <input type="checkbox" id="filter-fin-recorrente" onchange="Modules.Financeiro._applyFilter()" style="accent-color:var(--color-primary);width:14px;height:14px;" />
-                        Só recorrentes
-                    </label>
                 </div>
                 <div id="financeiro-list" class="card-body">
                     <div class="loader-inline"></div>
                 </div>
             </div>
 
-            <!-- MODAL CRIAR COBRANÇA -->
+            <!-- MODAL CRIAR MENSALIDADE -->
             <div class="modal-overlay" id="modal-financeiro">
                 <div class="modal-box">
                     <div class="modal-header">
-                        <h3>Nova Cobrança</h3>
+                        <h3>Nova Mensalidade</h3>
                         <button class="modal-close" onclick="closeModal('modal-financeiro')">×</button>
                     </div>
                     <div class="modal-body">
@@ -57,41 +48,18 @@ Modules.Financeiro = {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Descrição *</label>
-                            <input type="text" class="input" id="fin-descricao" placeholder="Ex: Mensalidade" />
-                        </div>
-                        <div class="form-group">
                             <label class="form-label">Valor (R$) *</label>
                             <input type="number" class="input" id="fin-valor" step="0.01" min="0.01" placeholder="0,00" />
                         </div>
-
-                        <!-- toggle recorrente / avulso -->
-                        <div class="fin-tipo-toggle">
-                            <button class="fin-tipo-btn active" id="btn-tipo-avulso"   onclick="Modules.Financeiro._setTipo('avulso')">📋 Avulsa (data única)</button>
-                            <button class="fin-tipo-btn"         id="btn-tipo-recorrente" onclick="Modules.Financeiro._setTipo('recorrente')">♻ Recorrente (mensal)</button>
-                        </div>
-
-                        <!-- vencimento avulso -->
-                        <div class="form-group" id="fin-campo-data">
-                            <label class="form-label">Data de Vencimento *</label>
-                            <input type="date" class="input" id="fin-vencimento" />
-                        </div>
-
-                        <!-- vencimento recorrente -->
-                        <div id="fin-campo-dia" style="display:none;">
-                            <div class="info-box" style="margin-bottom:10px;">
-                                ♻ A cobrança será gerada todo mês neste dia. Ao marcar como pago, o próximo mês é criado automaticamente.
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Dia do Vencimento (1–31) *</label>
-                                <input type="number" class="input" id="fin-dia" min="1" max="31" placeholder="Ex: 10" style="max-width:140px;" />
-                                <span style="font-size:.78rem;color:var(--color-text-3);margin-top:4px;">O vencimento deste mês será calculado automaticamente.</span>
-                            </div>
+                        <div class="form-group">
+                            <label class="form-label">Dia do Vencimento (1–31) *</label>
+                            <input type="number" class="input" id="fin-dia" min="1" max="31" placeholder="Ex: 10" style="max-width:140px;" />
+                            <span style="font-size:.78rem;color:var(--color-text-3);margin-top:4px;">A mensalidade se repete todo mês nesse dia, a partir do próximo mês.</span>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-ghost" onclick="closeModal('modal-financeiro')">Cancelar</button>
-                        <button class="btn btn-primary" id="btn-save-fin" onclick="Modules.Financeiro.save()">Criar Cobrança</button>
+                        <button class="btn btn-primary" id="btn-save-fin" onclick="Modules.Financeiro.save()">Criar Mensalidade</button>
                     </div>
                 </div>
             </div>
@@ -106,55 +74,9 @@ Modules.Financeiro = {
                 selCreate.innerHTML += `<option value="${a.id}">${escapeHtml(a.nome)}</option>`;
                 selFilter.innerHTML += `<option value="${a.id}">${escapeHtml(a.nome)}</option>`;
             });
-            await this._loadStats();
         }
 
         await this._loadList();
-    },
-
-    // ── tipo de cobrança ──────────────────────────────────────
-    _setTipo(tipo) {
-        const isRec = tipo === 'recorrente';
-        document.getElementById('btn-tipo-avulso')?.classList.toggle('active', !isRec);
-        document.getElementById('btn-tipo-recorrente')?.classList.toggle('active', isRec);
-        document.getElementById('fin-campo-data').style.display = isRec ? 'none' : '';
-        document.getElementById('fin-campo-dia').style.display  = isRec ? '' : 'none';
-    },
-
-    // ── stats ─────────────────────────────────────────────────
-    async _loadStats() {
-        const container = document.getElementById('stats-fin');
-        if (!container) return;
-
-        const { data } = await supabase.from('financeiro').select('status,valor');
-
-        const pago     = data?.filter(r => r.status === 'pago').reduce((s,r) => s + parseFloat(r.valor), 0) || 0;
-        const pendente = data?.filter(r => r.status === 'pendente').reduce((s,r) => s + parseFloat(r.valor), 0) || 0;
-        const atrasado = data?.filter(r => r.status === 'atrasado').reduce((s,r) => s + parseFloat(r.valor), 0) || 0;
-
-        container.innerHTML = `
-            <div class="stat-card stat-green">
-                <div class="stat-icon">✓</div>
-                <div class="stat-body">
-                    <div class="stat-value">${fmt.currency(pago)}</div>
-                    <div class="stat-label">Total Recebido</div>
-                </div>
-            </div>
-            <div class="stat-card stat-gold">
-                <div class="stat-icon">⏳</div>
-                <div class="stat-body">
-                    <div class="stat-value">${fmt.currency(pendente)}</div>
-                    <div class="stat-label">A Receber</div>
-                </div>
-            </div>
-            <div class="stat-card stat-red">
-                <div class="stat-icon">⚠</div>
-                <div class="stat-body">
-                    <div class="stat-value">${fmt.currency(atrasado)}</div>
-                    <div class="stat-label">Em Atraso</div>
-                </div>
-            </div>
-        `;
     },
 
     _applyFilter() {
@@ -177,13 +99,11 @@ Modules.Financeiro = {
 
         if (!isAdmin) query = query.eq('aluno_id', uid);
 
-        const statusFilter     = document.getElementById('filter-fin-status')?.value;
-        const alunoFilter      = document.getElementById('filter-fin-aluno')?.value;
-        const recorrenteFilter = document.getElementById('filter-fin-recorrente')?.checked;
+        const statusFilter = document.getElementById('filter-fin-status')?.value;
+        const alunoFilter   = document.getElementById('filter-fin-aluno')?.value;
 
-        if (statusFilter)     query = query.eq('status', statusFilter);
-        if (alunoFilter)      query = query.eq('aluno_id', alunoFilter);
-        if (recorrenteFilter) query = query.eq('recorrente', true);
+        if (statusFilter) query = query.eq('status', statusFilter);
+        if (alunoFilter)  query = query.eq('aluno_id', alunoFilter);
 
         const from = (this._page - 1) * APP_CONFIG.paginationSize;
         query = query.range(from, from + APP_CONFIG.paginationSize - 1);
@@ -202,9 +122,8 @@ Modules.Financeiro = {
                 <thead>
                     <tr>
                         ${isAdmin ? '<th>Aluno</th>' : ''}
-                        <th>Descrição</th>
                         <th>Valor</th>
-                        <th>Vencimento</th>
+                        <th>Dia</th>
                         <th>Status</th>
                         <th>Pago em</th>
                         ${isAdmin ? '<th>Ações</th>' : ''}
@@ -215,19 +134,11 @@ Modules.Financeiro = {
                         ? data.map(f => {
                             const s       = fmt.status_fin(f.status);
                             const vencido = f.status === 'atrasado';
-                            const isRec   = f.recorrente;
                             return `
                                 <tr class="${vencido ? 'row-danger' : ''}">
                                     ${isAdmin ? `<td>${escapeHtml(f.aluno_nome)}</td>` : ''}
-                                    <td>
-                                        ${escapeHtml(f.descricao)}
-                                        ${isRec ? `<span title="Cobrança recorrente mensal" style="margin-left:5px;cursor:default;">♻</span>` : ''}
-                                    </td>
                                     <td><strong>${fmt.currency(f.valor)}</strong></td>
-                                    <td class="${vencido ? 'text-danger' : ''}">
-                                        ${fmt.date(f.vencimento)}
-                                        ${isRec && f.dia_vencimento ? `<div style="font-size:.72rem;color:var(--color-text-3);">dia ${f.dia_vencimento} todo mês</div>` : ''}
-                                    </td>
+                                    <td class="${vencido ? 'text-danger' : ''}">dia ${f.dia_vencimento || '—'}</td>
                                     <td>${badge(s.label, s.class)}</td>
                                     <td>${f.pago_em ? fmt.date(f.pago_em) : '—'}</td>
                                     ${isAdmin ? `
@@ -235,7 +146,7 @@ Modules.Financeiro = {
                                         <div class="action-btns">
                                             ${f.status !== 'pago'
                                                 ? `<button class="btn btn-ghost btn-sm text-success"
-                                                    onclick="Modules.Financeiro.marcarPago('${f.id}', ${isRec}, ${f.dia_vencimento || 'null'}, '${escapeHtml(f.aluno_id)}', '${escapeHtml(f.descricao)}', ${f.valor})">Marcar Pago</button>`
+                                                    onclick="Modules.Financeiro.marcarPago('${f.id}', ${f.dia_vencimento || 'null'}, '${escapeHtml(f.aluno_id)}', ${f.valor})">Marcar Pago</button>`
                                                 : ''
                                             }
                                             <button class="btn btn-ghost btn-sm text-danger"
@@ -245,7 +156,7 @@ Modules.Financeiro = {
                                 </tr>
                             `;
                         }).join('')
-                        : `<tr><td colspan="${isAdmin ? 7 : 5}">${emptyState('Nenhuma cobrança encontrada')}</td></tr>`
+                        : `<tr><td colspan="${isAdmin ? 6 : 4}">${emptyState('Nenhuma mensalidade encontrada')}</td></tr>`
                     }
                 </tbody>
             </table>
@@ -260,82 +171,52 @@ Modules.Financeiro = {
 
     // ── abrir modal criar ─────────────────────────────────────
     openCreate() {
-        document.getElementById('fin-aluno').value      = '';
-        document.getElementById('fin-descricao').value  = '';
-        document.getElementById('fin-valor').value      = '';
-        document.getElementById('fin-vencimento').value = '';
-        const diaEl = document.getElementById('fin-dia');
-        if (diaEl) diaEl.value = '';
-        this._setTipo('avulso');
+        document.getElementById('fin-aluno').value = '';
+        document.getElementById('fin-valor').value = '';
+        document.getElementById('fin-dia').value   = '';
         openModal('modal-financeiro');
     },
 
-    // ── salvar cobrança ───────────────────────────────────────
+    // ── salvar mensalidade ────────────────────────────────────
     async save() {
-        const alunoId  = document.getElementById('fin-aluno').value;
-        const descricao = document.getElementById('fin-descricao').value.trim();
-        const valor    = parseFloat(document.getElementById('fin-valor').value);
-        const isRec    = document.getElementById('btn-tipo-recorrente')?.classList.contains('active');
+        const alunoId = document.getElementById('fin-aluno').value;
+        const valor   = parseFloat(document.getElementById('fin-valor').value);
+        const dia     = parseInt(document.getElementById('fin-dia').value);
 
         const errors = validateForm([
-            { value: alunoId,   label: 'Aluno',      rules: ['required'] },
-            { value: descricao, label: 'Descrição',   rules: ['required'] }
+            { value: alunoId, label: 'Aluno', rules: ['required'] }
         ]);
         if (!valor || valor <= 0) errors.push('Valor deve ser maior que zero');
-
-        let vencimento, diaVencimento = null;
-
-        if (isRec) {
-            diaVencimento = parseInt(document.getElementById('fin-dia')?.value);
-            if (!diaVencimento || diaVencimento < 1 || diaVencimento > 31) {
-                errors.push('Informe um dia de vencimento válido (1 a 31)');
-            } else {
-                vencimento = this._calcVencimento(diaVencimento);
-            }
-        } else {
-            vencimento = document.getElementById('fin-vencimento').value;
-            if (!vencimento) errors.push('Data de vencimento é obrigatória');
-        }
+        if (!dia || dia < 1 || dia > 31) errors.push('Informe um dia de vencimento válido (1 a 31)');
 
         if (errors.length) return showToast(errors[0], 'error');
+
+        const vencimento = this._calcProximoVencimento(dia);
 
         setLoading('#btn-save-fin', true);
         try {
             const payload = {
-                aluno_id:      alunoId,
-                descricao,
+                aluno_id:       alunoId,
+                descricao:      'Mensalidade',
                 valor,
                 vencimento,
-                recorrente:    isRec,
-                dia_vencimento: isRec ? diaVencimento : null,
-                created_by:    AppState.userProfile.id
+                recorrente:     true,
+                dia_vencimento: dia,
+                created_by:     AppState.userProfile.id
             };
 
             const { error } = await supabase.from('financeiro').insert(payload);
             if (error) throw error;
 
-            await auditLog('COBRANCA_CRIADA', 'financeiro', null, { alunoId, valor, vencimento, recorrente: isRec });
-            showToast(`Cobrança ${isRec ? 'recorrente ' : ''}criada com sucesso`, 'success');
+            await auditLog('COBRANCA_CRIADA', 'financeiro', null, { alunoId, valor, vencimento });
+            showToast('Mensalidade criada com sucesso', 'success');
             closeModal('modal-financeiro');
             await this._loadList();
-            await this._loadStats();
         } catch (err) {
             showToast(err.message || 'Erro ao salvar', 'error');
         } finally {
             setLoading('#btn-save-fin', false);
         }
-    },
-
-    // Calcula a data de vencimento para o mês atual dado um dia
-    _calcVencimento(dia) {
-        const hoje  = new Date();
-        const ano   = hoje.getFullYear();
-        const mes   = hoje.getMonth(); // 0-based
-        // Quantos dias tem o mês atual?
-        const maxDia = new Date(ano, mes + 1, 0).getDate();
-        const diaReal = Math.min(dia, maxDia);
-        const d = new Date(ano, mes, diaReal);
-        return d.toISOString().split('T')[0];
     },
 
     // Calcula o vencimento do próximo mês dado um dia
@@ -351,8 +232,8 @@ Modules.Financeiro = {
     },
 
     // ── marcar como pago ─────────────────────────────────────
-    async marcarPago(id, isRecorrente, dia, alunoId, descricao, valor) {
-        const confirmed = await confirmAction('Confirmar pagamento desta cobrança?');
+    async marcarPago(id, dia, alunoId, valor) {
+        const confirmed = await confirmAction('Confirmar pagamento desta mensalidade?');
         if (!confirmed) return;
 
         const { error } = await supabase
@@ -364,12 +245,12 @@ Modules.Financeiro = {
 
         await auditLog('COBRANCA_PAGA', 'financeiro', id, { status: 'pago' });
 
-        // Se for recorrente, cria automaticamente a cobrança do próximo mês
-        if (isRecorrente && dia && alunoId) {
+        // Gera automaticamente a mensalidade do próximo mês
+        if (dia && alunoId) {
             const proximoVenc = this._calcProximoVencimento(dia);
             const { error: errProx } = await supabase.from('financeiro').insert({
                 aluno_id:       alunoId,
-                descricao:      descricao,
+                descricao:      'Mensalidade',
                 valor:          valor,
                 vencimento:     proximoVenc,
                 recorrente:     true,
@@ -386,19 +267,17 @@ Modules.Financeiro = {
         }
 
         await this._loadList();
-        await this._loadStats();
     },
 
     // ── excluir ───────────────────────────────────────────────
     async deletar(id) {
-        const confirmed = await confirmAction('Excluir esta cobrança permanentemente?');
+        const confirmed = await confirmAction('Excluir esta mensalidade permanentemente?');
         if (!confirmed) return;
 
         const { error } = await supabase.from('financeiro').delete().eq('id', id);
         if (error) return showToast(error.message, 'error');
 
-        showToast('Cobrança excluída', 'success');
+        showToast('Mensalidade excluída', 'success');
         await this._loadList();
-        await this._loadStats();
     }
 };

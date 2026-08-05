@@ -102,9 +102,27 @@ CREATE TABLE IF NOT EXISTS public.agenda_meet (
     lembrete_whatsapp_10min_enviado  BOOLEAN NOT NULL DEFAULT false,
     lembrete_whatsapp_prof_enviado   BOOLEAN NOT NULL DEFAULT false,
     created_at                       TIMESTAMPTZ DEFAULT NOW(),
-    updated_at                       TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT data_futura CHECK (data >= CURRENT_DATE)
+    updated_at                       TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Valida data futura só na criação (INSERT) — um CHECK constraint seria
+-- revalidado em todo UPDATE também, impedindo cancelar/editar aulas cuja
+-- data já passou (bug real corrigido em 2026-08-04). Usa a data no fuso
+-- de São Paulo, não CURRENT_DATE puro (que é UTC — à noite no Brasil o
+-- UTC já virou o dia seguinte, rejeitando aulas de "hoje" incorretamente).
+CREATE OR REPLACE FUNCTION public.fn_valida_data_futura_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.data < (now() AT TIME ZONE 'America/Sao_Paulo')::date THEN
+        RAISE EXCEPTION 'Não é possível agendar uma aula em data passada';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_valida_data_futura_insert
+    BEFORE INSERT ON public.agenda_meet
+    FOR EACH ROW EXECUTE FUNCTION public.fn_valida_data_futura_insert();
 
 CREATE TABLE IF NOT EXISTS public.relatorios (
     id                      UUID  PRIMARY KEY DEFAULT uuid_generate_v4(),

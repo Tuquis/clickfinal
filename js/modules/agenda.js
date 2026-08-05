@@ -1113,13 +1113,20 @@ Modules.Agenda = {
     async _notificarProfessor(agendaId) {
         if (!agendaId) return;
         try {
-            const { error } = await supabase.functions.invoke('send-agendamento-email', {
+            const { data, error } = await supabase.functions.invoke('send-agendamento-email', {
                 body: { agendaId }
             });
-            if (error) console.warn('Notificação WhatsApp falhou:', error.message);
-            else       console.log('WhatsApp de agendamento enviado ao professor');
+            if (error) {
+                console.warn('Notificação WhatsApp falhou:', error.message);
+                showToast('Aula agendada, mas o aviso por WhatsApp ao professor falhou.', 'warning', 6000);
+            } else if (data?.skipped === 'sem_telefone') {
+                showToast('Aula agendada, mas o professor não tem telefone cadastrado — aviso por WhatsApp não enviado.', 'warning', 6000);
+            } else {
+                console.log('WhatsApp de agendamento enviado ao professor');
+            }
         } catch (e) {
             console.warn('Notificação WhatsApp falhou:', e?.message || e);
+            showToast('Aula agendada, mas o aviso por WhatsApp ao professor falhou.', 'warning', 6000);
         }
     },
 

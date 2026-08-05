@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { enviarTemplate, enviarDocumentoTemplateBase64 } from '../_shared/meta.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -7,52 +8,37 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_KEY      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ZAPI_INSTANCE_ID  = Deno.env.get('ZAPI_INSTANCE_ID')!;
-const ZAPI_TOKEN        = Deno.env.get('ZAPI_TOKEN')!;
-const ZAPI_CLIENT_TOKEN = Deno.env.get('ZAPI_CLIENT_TOKEN')!;
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const NUMERO_ADMIN = '5575988411649';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const META_LABELS: Record<string,string> = { sim:'Sim — meta totalmente atingida', parcialmente:'Parcialmente atingida', nao:'Não atingida' };
-const COMP_LABELS: Record<string,string> = { excelente:'Participou ativamente e demonstrou interesse', bom:'Participou com engajamento moderado', regular:'Precisou de estímulo para se concentrar', ruim:'Mostrou desânimo ou distração' };
-const COMPR_LABELS: Record<string,string> = { excelente:'Compreendeu e aplicou com autonomia', boa:'Compreendeu com apoio, com pequenas dúvidas', regular:'Compreendeu parcialmente, precisa de reforço', baixa:'Baixa compreensão' };
 
 function lbl(map: Record<string,string>, k: string) { return k ? (map[k] || k) : '—'; }
-function norm(tel: string) {
-  const d = tel.replace(/\D/g,'');
-  if (d.startsWith('55') && (d.length===12||d.length===13)) return d;
-  if (d.length===10||d.length===11) return '55'+d;
-  return d;
-}
 function fmtDatetime(iso: string) {
   return new Date(iso).toLocaleString('pt-BR', { timeZone:'America/Sao_Paulo', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
-async function sendText(msg: string) {
-  const res = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json', 'Client-Token':ZAPI_CLIENT_TOKEN },
-    body: JSON.stringify({ phone: norm(NUMERO_ADMIN), message: msg }),
-  });
-  return res.ok;
+async function sendText(params: string[]) {
+  try {
+    await enviarTemplate(NUMERO_ADMIN, 'relatorio_pos_aula', params);
+    return true;
+  } catch (e) {
+    console.error('Meta API error (texto):', e);
+    return false;
+  }
 }
 
 async function sendPDF(b64: string, filename: string) {
-  const res = await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-document/pdf`, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json', 'Client-Token':ZAPI_CLIENT_TOKEN },
-    body: JSON.stringify({
-      phone:    norm(NUMERO_ADMIN),
-      document: `data:application/pdf;base64,${b64}`,
-      fileName: filename,
-      filename: filename,
-      caption:  filename.replace('.pdf',''),
-    }),
-  });
-  return res.ok;
+  try {
+    await enviarDocumentoTemplateBase64(NUMERO_ADMIN, 'relatorio_pdf_documento', b64, filename);
+    return true;
+  } catch (e) {
+    console.error('Meta API error (pdf):', e);
+    return false;
+  }
 }
 
 serve(async (req) => {
@@ -85,18 +71,12 @@ serve(async (req) => {
     const profNome  = r.professor?.nome || 'Professor';
     const alunoNome = r.aluno?.nome     || 'Aluno';
 
-    const msg =
-      `📋 *Novo Relatório Pós Aula*\n\n` +
-      `🕐 Emitido em: *${fmtDatetime(r.created_at)}*\n` +
-      `👨‍🏫 Professor(a): *${profNome}*\n` +
-      `👤 Aluno(a): *${alunoNome}*\n` +
-      (r.disciplina_ministrada ? `📖 Disciplina: *${r.disciplina_ministrada}*\n` : '') +
-      `🎯 Meta atingida: ${lbl(META_LABELS, r.meta_atingida)}\n` +
-      `🧠 Compreensão: ${lbl(COMPR_LABELS, r.compreensao)}\n` +
-      `🎓 Comportamento: ${lbl(COMP_LABELS, r.comportamento)}\n\n` +
-      `📄 O relatório completo em PDF será enviado em seguida.`;
-
-    await sendText(msg);
+    await sendText([
+      fmtDatetime(r.created_at),
+      profNome,
+      alunoNome,
+      lbl(META_LABELS, r.meta_atingida)
+    ]);
     return new Response(JSON.stringify({ ok: true, tipo: 'texto', profNome, alunoNome }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
   } catch(e) {

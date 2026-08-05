@@ -1,23 +1,20 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { enviarTemplate } from '../_shared/meta.ts';
 
-const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_KEY      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ZAPI_INSTANCE_ID  = Deno.env.get('ZAPI_INSTANCE_ID')!;
-const ZAPI_TOKEN        = Deno.env.get('ZAPI_TOKEN')!;
-const ZAPI_CLIENT_TOKEN = Deno.env.get('ZAPI_CLIENT_TOKEN')!;
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function sendZap(phone: string, message: string) {
-    const num = phone.replace(/\D/g, '');
-    const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-    const res = await fetch(url, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'Client-Token': ZAPI_CLIENT_TOKEN },
-        body: JSON.stringify({ phone: num, message }),
-    });
-    return res.ok;
+async function sendTemplate(phone: string, templateName: string, params: string[]) {
+    try {
+        await enviarTemplate(phone, templateName, params);
+        return true;
+    } catch (e) {
+        console.error('Meta API error:', e);
+        return false;
+    }
 }
 
 serve(async (req) => {
@@ -61,16 +58,13 @@ serve(async (req) => {
         }
 
         const primeiroNome = alunoNome.split(' ')[0];
-        const prazoLinha   = prazo ? `\n📅 Prazo: *${prazo}*` : '';
 
-        const msg =
-            `📚 Olá, *${primeiroNome}*! Você tem uma nova atividade no Click do Saber!\n\n` +
-            `📝 *${titulo}*${prazoLinha}\n` +
-            `👨‍🏫 Professor(a): ${profNome}\n\n` +
-            `Entre no portal, resolva e envie a foto da resolução!\n` +
-            `🔗 https://dashboardclick.vercel.app`;
-
-        const enviado = await sendZap(telefone, msg);
+        const enviado = await sendTemplate(telefone, 'nova_atividade_aluno', [
+            primeiroNome,
+            titulo,
+            prazo || '—',
+            profNome
+        ]);
 
         return new Response(JSON.stringify({ ok: enviado, alunoId, telefone }), { status: 200 });
     } catch (e) {

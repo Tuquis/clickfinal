@@ -7,43 +7,10 @@
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { enviarTemplate, normalizarTelefone } from '../_shared/meta.ts'
 
-const ZAPI_INSTANCE_ID     = Deno.env.get('ZAPI_INSTANCE_ID')!
-const ZAPI_TOKEN           = Deno.env.get('ZAPI_TOKEN')!
-const ZAPI_CLIENT_TOKEN    = Deno.env.get('ZAPI_CLIENT_TOKEN')!
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-const PLATAFORMA_URL = 'https://dashboardclick.vercel.app'
-
-// ── Helpers (idênticos ao send-class-reminders) ──────────────
-
-function normalizarTelefone(tel: string): string | null {
-  if (!tel) return null
-  const digits = tel.replace(/\D/g, '')
-  if (digits.length === 0) return null
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) return digits
-  if (digits.length === 10 || digits.length === 11) return '55' + digits
-  return null
-}
-
-async function enviarWhatsApp(telefone: string, mensagem: string): Promise<void> {
-  const numero = normalizarTelefone(telefone)
-  if (!numero) throw new Error(`Telefone inválido: ${telefone}`)
-
-  const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Client-Token':  ZAPI_CLIENT_TOKEN || ''
-    },
-    body: JSON.stringify({ phone: numero, message: mensagem })
-  })
-
-  const json = await resp.json().catch(() => ({}))
-  if (!resp.ok) throw new Error(`Z-API ${resp.status}: ${json.error || JSON.stringify(json)}`)
-}
 
 // ── Handler principal ─────────────────────────────────────────
 
@@ -113,13 +80,8 @@ Deno.serve(async (req) => {
 
     const nomeAluno = remetente?.nome ?? 'Um aluno'
 
-    // ── Monta e envia a mensagem ─────────────────────────────
-    const mensagem =
-      `💬 *${nomeAluno}* te enviou uma mensagem no Click do Saber!\n\n` +
-      `Clique aqui para visualizar e responder:\n` +
-      `${PLATAFORMA_URL}`
-
-    await enviarWhatsApp(profInfo.telefone, mensagem)
+    // ── Envia o template ──────────────────────────────────────
+    await enviarTemplate(profInfo.telefone, 'nova_mensagem_chat', [nomeAluno])
 
     console.log(`Notificação de chat enviada para professor ${destinatario.nome} (${normalizarTelefone(profInfo.telefone)})`)
     return new Response(

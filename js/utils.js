@@ -245,7 +245,9 @@ function paginationHtml(page, totalPages, onChangeFn) {
 // DATA ATUAL (ISO)
 // ============================================================
 function todayISO() {
-    return new Date().toISOString().split('T')[0];
+    // Usa o fuso de São Paulo, não UTC — à noite no Brasil o UTC já
+    // virou o dia seguinte, o que fazia "hoje" ficar um dia à frente.
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 }
 
 // ============================================================

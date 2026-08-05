@@ -3,10 +3,11 @@
 // EDGE FUNCTION: send-class-reminders
 // Disparada a cada minuto pelo pg_cron.
 // - Email ao professor: ~30 min antes
-// - WhatsApp ao aluno:  ~25 min antes (via Z-API)
+// - WhatsApp: templates via API oficial da Meta
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { enviarTemplate, normalizarTelefone } from '../_shared/meta.ts'
 
 // ── Variáveis de ambiente ────────────────────────────────────
 const EMAILJS_SERVICE_ID   = Deno.env.get('EMAILJS_SERVICE_ID')!
@@ -14,10 +15,6 @@ const EMAILJS_TEMPLATE_ID  = Deno.env.get('EMAILJS_REMINDER_TEMPLATE_ID')!
 const EMAILJS_PUBLIC_KEY   = Deno.env.get('EMAILJS_PUBLIC_KEY')!
 const EMAILJS_PRIVATE_KEY  = Deno.env.get('EMAILJS_PRIVATE_KEY')!
 const CRON_SECRET          = Deno.env.get('CRON_SECRET')!
-
-const ZAPI_INSTANCE_ID     = Deno.env.get('ZAPI_INSTANCE_ID')!
-const ZAPI_TOKEN           = Deno.env.get('ZAPI_TOKEN')!
-const ZAPI_CLIENT_TOKEN    = Deno.env.get('ZAPI_CLIENT_TOKEN')!
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -33,48 +30,6 @@ function toSaoPaulo(d: Date): { date: string; time: string } {
   return { date, time: timeStr.substring(0, 5) }
 }
 
-// Normaliza telefone para formato Z-API: 5511999999999
-function normalizarTelefone(tel: string): string | null {
-  if (!tel) return null
-  const digits = tel.replace(/\D/g, '')
-  if (digits.length === 0) return null
-
-  // Já tem código do país
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
-    return digits
-  }
-  // Tem DDD + número (10 ou 11 dígitos)
-  if (digits.length === 10 || digits.length === 11) {
-    return '55' + digits
-  }
-  return null
-}
-
-// Envia mensagem de texto via Z-API
-async function enviarWhatsApp(telefone: string, mensagem: string): Promise<void> {
-  const numero = normalizarTelefone(telefone)
-  if (!numero) throw new Error(`Telefone inválido: ${telefone}`)
-
-  if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
-    throw new Error('Credenciais Z-API não configuradas (ZAPI_INSTANCE_ID / ZAPI_TOKEN)')
-  }
-
-  const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`
-
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Client-Token':  ZAPI_CLIENT_TOKEN || ''
-    },
-    body: JSON.stringify({ phone: numero, message: mensagem })
-  })
-
-  const json = await resp.json().catch(() => ({}))
-  if (!resp.ok) {
-    throw new Error(`Z-API ${resp.status}: ${json.error || JSON.stringify(json)}`)
-  }
-}
 
 // ── Handler principal ─────────────────────────────────────────
 Deno.serve(async (req) => {
@@ -240,19 +195,8 @@ Deno.serve(async (req) => {
       const nomeAluno  = aluno?.nome ?? 'aluno'
       const nomeProf   = prof?.nome  ?? 'seu professor'
 
-      let mensagem =
-        `Olá, ${nomeAluno}! 👋\n\n` +
-        `⏰ Sua aula começa em *25 minutos* (às ${horarioFmt}).\n\n` +
-        `📚 Se prepare! Pegue papel, caneta e o material necessário.\n\n` +
-        `👨‍🏫 Professor(a): *${nomeProf}*`
-
-      if (aula.link_meet) {
-        mensagem += `\n\n🔗 Link para entrar na aula:\n${aula.link_meet}`
-      }
-
-      mensagem += `\n\n_Click do Saber_`
-
-      await enviarWhatsApp(telefone, mensagem)
+      // Template aprovado no idioma "en" por engano — corrigir aqui até resubmeter no painel
+      await enviarTemplate(telefone, 'lembrete_aula_25min_aluno', [nomeAluno, horarioFmt, nomeProf, aula.link_meet || 'Ainda não informado'], 'en')
 
       await db.from('agenda_meet').update({ lembrete_whatsapp_enviado: true }).eq('id', aula.id)
       console.log(`WhatsApp enviado — ${normalizarTelefone(telefone)} — aula ${aula.id}`)
@@ -285,17 +229,7 @@ Deno.serve(async (req) => {
       const nomeAluno  = aluno?.nome ?? 'aluno'
       const nomeProf   = prof?.nome  ?? 'seu professor'
 
-      let mensagem =
-        `⚡ ${nomeAluno}, sua aula começa em *10 minutos* (às ${horarioFmt})!\n\n` +
-        `👨‍🏫 Professor(a): *${nomeProf}*`
-
-      if (aula.link_meet) {
-        mensagem += `\n\n🔗 Entre agora:\n${aula.link_meet}`
-      }
-
-      mensagem += `\n\n_Click do Saber_`
-
-      await enviarWhatsApp(telefone, mensagem)
+      await enviarTemplate(telefone, 'lembrete_aula_10min_aluno', [nomeAluno, horarioFmt, nomeProf, aula.link_meet || 'Ainda não informado'])
 
       await db.from('agenda_meet').update({ lembrete_whatsapp_10min_enviado: true }).eq('id', aula.id)
       console.log(`WhatsApp 10min enviado — ${normalizarTelefone(telefone)} — aula ${aula.id}`)
@@ -327,23 +261,9 @@ Deno.serve(async (req) => {
 
       const horarioFmt = (aula.horario ?? '').substring(0, 5)
       const nomeAluno  = aluno?.nome         ?? 'aluno'
-      const disciplina = alunoInfo?.disciplina ?? ''
-      const serie      = alunoInfo?.serie      ?? ''
+      const disciplina = alunoInfo?.disciplina ?? '—'
 
-      let mensagem =
-        `📋 Lembrete de aula em *30 minutos* (às ${horarioFmt})!\n\n` +
-        `👤 Aluno: *${nomeAluno}*`
-
-      if (disciplina) mensagem += `\n📚 Disciplina: ${disciplina}`
-      if (serie)      mensagem += ` — ${serie}`
-
-      if (aula.link_meet) {
-        mensagem += `\n\n🔗 Link da aula:\n${aula.link_meet}`
-      }
-
-      mensagem += `\n\n_Click do Saber_`
-
-      await enviarWhatsApp(telefone, mensagem)
+      await enviarTemplate(telefone, 'lembrete_aula_30min_professor', [horarioFmt, nomeAluno, disciplina, aula.link_meet || 'Ainda não informado'])
 
       await db.from('agenda_meet').update({ lembrete_whatsapp_prof_enviado: true }).eq('id', aula.id)
       console.log(`WhatsApp professor enviado — ${normalizarTelefone(telefone)} — aula ${aula.id}`)
@@ -377,17 +297,8 @@ Deno.serve(async (req) => {
       const primeiroNome = nomePsico.split(' ')[0]
       const nomeAluno   = aluno?.nome  ?? 'aluno'
 
-      let mensagem =
-        `⚡ ${primeiroNome}, sua consulta começa em *10 minutos* (às ${horarioFmt})!\n\n` +
-        `👤 Aluno: *${nomeAluno}*`
-
-      if (consulta.link_meet) {
-        mensagem += `\n\n🔗 Entre agora:\n${consulta.link_meet}`
-      }
-
-      mensagem += `\n\n_Click do Saber_`
-
-      await enviarWhatsApp(telefone, mensagem)
+      // Template aprovado no idioma "pt_PT" (não pt_BR) — corrigir aqui até resubmeter no painel
+      await enviarTemplate(telefone, 'lembrete_consulta_10min_psico', [primeiroNome, horarioFmt, nomeAluno, consulta.link_meet || 'Ainda não informado'], 'pt_PT')
       await db.from('agenda_psico').update({ lembrete_whatsapp_10min_enviado: true }).eq('id', consulta.id)
       console.log(`WhatsApp psico 10min enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
       results.push({ id: consulta.id, tipo: 'zapPsico10', status: 'enviado', para: normalizarTelefone(telefone) })
@@ -421,18 +332,7 @@ Deno.serve(async (req) => {
         continue
       }
 
-      let mensagem =
-        `Olá, *${primeiroNome}*! 👋\n\n` +
-        `A consulta de *${nomeAluno}* com a psicopedagoga *${nomePsico}* está marcada para *daqui a 30 minutos* (às ${horarioFmt}).\n\n` +
-        `✅ Certifique-se de que *${nomeAluno}* está disponível e em um ambiente tranquilo para a sessão.`
-
-      if (consulta.link_meet) {
-        mensagem += `\n\n🔗 Link da sessão:\n${consulta.link_meet}`
-      }
-
-      mensagem += `\n\n_Click do Saber_`
-
-      await enviarWhatsApp(telefone, mensagem)
+      await enviarTemplate(telefone, 'lembrete_consulta_30min_responsavel', [primeiroNome, nomeAluno, nomePsico, horarioFmt, consulta.link_meet || 'Ainda não informado'])
       await db.from('agenda_psico').update({ lembrete_whatsapp_30min_responsavel_enviado: true }).eq('id', consulta.id)
       console.log(`WhatsApp 30min responsável enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
       results.push({ id: consulta.id, tipo: 'zapPsico30Resp', status: 'enviado', para: normalizarTelefone(telefone) })
@@ -469,13 +369,7 @@ Deno.serve(async (req) => {
         const nomeProf = prof?.nome ?? 'Professor'
         const primeiroNome = nomeProf.split(' ')[0]
 
-        const mensagem =
-          `Bom dia, professor ${primeiroNome}! 🌅\n\n` +
-          `Você tem aula agendada para hoje. Verifique no dashboard os horários para se programar. 📅\n\n` +
-          `30 minutos antes de cada aula você receberá o lembrete com o link por aqui também. 💜\n\n` +
-          `_Click do Saber_`
-
-        await enviarWhatsApp(profInfo.telefone, mensagem)
+        await enviarTemplate(profInfo.telefone, 'bom_dia_professor', [primeiroNome])
         await db.from('professores_info').update({ lembrete_manha_data: today }).eq('usuario_id', profId)
 
         console.log(`Bom dia enviado — professor ${nomeProf}`)
@@ -510,13 +404,7 @@ Deno.serve(async (req) => {
         const nomePsico    = psico?.nome ?? 'Psicopedagoga'
         const primeiroNome = nomePsico.split(' ')[0]
 
-        const mensagem =
-          `Bom dia, ${primeiroNome}! 🌅\n\n` +
-          `Você tem consulta(s) psicopedagógica(s) agendada(s) para hoje. Verifique no dashboard os horários. 📅\n\n` +
-          `10 minutos antes de cada consulta você receberá o lembrete aqui também. 💜\n\n` +
-          `_Click do Saber_`
-
-        await enviarWhatsApp(psicoInfo.telefone, mensagem)
+        await enviarTemplate(psicoInfo.telefone, 'bom_dia_psico', [primeiroNome])
         await db.from('psico_info').update({ lembrete_manha_data: today }).eq('usuario_id', psicoId)
 
         console.log(`Bom dia psico enviado — ${nomePsico}`)
