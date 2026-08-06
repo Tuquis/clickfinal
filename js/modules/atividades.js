@@ -49,8 +49,7 @@ Modules.Atividades = {
                         </div>
                         <div class="form-group">
                             <label class="form-label">Arquivo (opcional)</label>
-                            <input type="file" class="input" id="atv-arquivo"
-                                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png" />
+                            <input type="file" class="input" id="atv-arquivo" />
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -85,7 +84,6 @@ Modules.Atividades = {
                             style="display:none" onchange="Modules.Atividades._onArquivoSelecionado(this)" />
                         <!-- input arquivo geral -->
                         <input type="file" id="resp-arquivo-doc"
-                            accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp"
                             style="display:none" onchange="Modules.Atividades._onArquivoSelecionado(this)" />
 
                         <div id="resp-arquivo-preview" style="display:none;padding:12px 14px;background:var(--color-surface-2);border-radius:var(--radius-sm);border:1px solid var(--color-border);">

@@ -245,6 +245,24 @@ CREATE TABLE IF NOT EXISTS public.mensagens (
         )
 );
 
+-- Chat direto professor/aluno (independente de agenda_id, ao contrário de "mensagens")
+CREATE TABLE IF NOT EXISTS public.mensagens_diretas (
+    id              UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+    remetente_id    UUID        NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    destinatario_id UUID        NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    conteudo        TEXT,
+    lida            BOOLEAN     NOT NULL DEFAULT false,
+    anexo_url       TEXT,
+    anexo_nome      TEXT,
+    anexo_tipo      TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT mensagens_diretas_conteudo_check
+        CHECK (
+            char_length(coalesce(conteudo, '')) <= 2000
+            AND (char_length(coalesce(conteudo, '')) > 0 OR anexo_url IS NOT NULL)
+        )
+);
+
 CREATE TABLE IF NOT EXISTS public.respostas_atividades (
     id           UUID    PRIMARY KEY DEFAULT uuid_generate_v4(),
     atividade_id UUID    NOT NULL REFERENCES public.atividades(id) ON DELETE CASCADE,
@@ -492,6 +510,7 @@ ALTER TABLE public.financeiro         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.observacoes_psico  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mensagens          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mensagens_diretas  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.respostas_atividades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agenda_psico       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.psico_info         ENABLE ROW LEVEL SECURITY;
@@ -792,6 +811,25 @@ CREATE POLICY "mensagens_update_lida" ON public.mensagens FOR UPDATE
               AND (am.professor_id = public.get_user_id()
                 OR am.aluno_id    = public.get_user_id())
         )
+    );
+
+-- mensagens_diretas
+DROP POLICY IF EXISTS "md_select" ON public.mensagens_diretas;
+DROP POLICY IF EXISTS "md_insert" ON public.mensagens_diretas;
+DROP POLICY IF EXISTS "md_update" ON public.mensagens_diretas;
+
+CREATE POLICY "md_select" ON public.mensagens_diretas FOR SELECT
+    USING (
+        remetente_id    = public.get_user_id()
+        OR destinatario_id = public.get_user_id()
+        OR public.get_user_role() = 'admin'
+    );
+CREATE POLICY "md_insert" ON public.mensagens_diretas FOR INSERT
+    WITH CHECK (remetente_id = public.get_user_id());
+CREATE POLICY "md_update" ON public.mensagens_diretas FOR UPDATE
+    USING (
+        destinatario_id = public.get_user_id()
+        OR public.get_user_role() = 'admin'
     );
 
 -- respostas_atividades
@@ -1095,6 +1133,14 @@ CREATE INDEX IF NOT EXISTS idx_financeiro_recorrente
 CREATE INDEX IF NOT EXISTS idx_mensagens_agenda
     ON public.mensagens(agenda_id, created_at);
 
+-- Chat direto
+CREATE INDEX IF NOT EXISTS idx_md_remetente
+    ON public.mensagens_diretas(remetente_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_md_destinatario
+    ON public.mensagens_diretas(destinatario_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_md_nao_lidas
+    ON public.mensagens_diretas(destinatario_id, lida) WHERE lida = false;
+
 -- Respostas
 CREATE INDEX IF NOT EXISTS idx_respostas_atividade
     ON public.respostas_atividades(atividade_id);
@@ -1156,6 +1202,7 @@ CREATE POLICY "materiais_aluno_resposta_select" ON storage.objects
 -- ══════════════════════════════════════════════════════════════
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.mensagens;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.mensagens_diretas;
 
 
 -- ══════════════════════════════════════════════════════════════

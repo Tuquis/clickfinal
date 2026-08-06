@@ -259,7 +259,9 @@ Modules.Chat = {
         if (!c.lastMsg) return '<em class="chat-no-msg">Sem mensagens</em>';
         const prefix = c.lastMsg.remetente_id === this._uid ? 'Você: ' : '';
         if (!c.lastMsg.conteudo && c.lastMsg.anexo_url) {
-            return `<span>${escapeHtml(prefix)}📷 Foto</span>`;
+            const ehImagem = (c.lastMsg.anexo_tipo || '').startsWith('image/');
+            const rotulo   = ehImagem ? '📷 Foto' : `📎 ${c.lastMsg.anexo_nome || 'Arquivo'}`;
+            return `<span>${escapeHtml(prefix)}${escapeHtml(rotulo)}</span>`;
         }
         const text   = escapeHtml((c.lastMsg.conteudo || '').substring(0, 42));
         const sufx   = (c.lastMsg.conteudo || '').length > 42 ? '…' : '';
@@ -317,9 +319,9 @@ Modules.Chat = {
                 </div>
                 <div class="chat-file-preview" id="chat-file-preview" style="display:none"></div>
                 <div class="chat-window-footer">
-                    <input type="file" id="chat-file-input" accept="image/*" style="display:none"
+                    <input type="file" id="chat-file-input" style="display:none"
                         onchange="Modules.Chat._onFileSelect(event)">
-                    <button class="chat-attach-btn" title="Enviar foto" onclick="Modules.Chat._abrirSeletorArquivo()">📎</button>
+                    <button class="chat-attach-btn" title="Enviar arquivo" onclick="Modules.Chat._abrirSeletorArquivo()">📎</button>
                     <textarea class="chat-input" id="chat-direct-input"
                         placeholder="Digite uma mensagem… (Enter para enviar)"
                         rows="1"
@@ -385,12 +387,18 @@ Modules.Chat = {
 
         if (document.querySelector(`[data-chat-id="${msg.id}"]`)) return;
 
-        const anexoHtml = msg.anexo_url ? `
+        const ehImagem = (msg.anexo_tipo || '').startsWith('image/');
+        const anexoHtml = !msg.anexo_url ? '' : ehImagem ? `
             <div class="chat-attachment">
                 <img src="${msg.anexo_url}" class="chat-attach-img"
                      alt="${escapeHtml(msg.anexo_nome || 'imagem')}"
                      onclick="window.open('${msg.anexo_url}','_blank')" loading="lazy">
-            </div>` : '';
+            </div>` : `
+            <a href="${msg.anexo_url}" target="_blank" rel="noopener" class="chat-attachment-file" download="${escapeHtml(msg.anexo_nome || '')}">
+                <span class="chat-attach-ext">${escapeHtml(this._fileExt(msg.anexo_nome))}</span>
+                <span class="chat-attach-fname">${escapeHtml(msg.anexo_nome || 'arquivo')}</span>
+                <span class="chat-attach-dl">⬇</span>
+            </a>`;
 
         const div = document.createElement('div');
         div.className      = 'chat-msg ' + (isMine ? 'chat-msg-mine' : 'chat-msg-other') + (animate ? ' chat-msg-new' : '');
@@ -440,12 +448,8 @@ Modules.Chat = {
         e.target.value = '';
         if (!file) return;
 
-        if (!file.type.startsWith('image/')) {
-            showToast('Apenas imagens são permitidas', 'error');
-            return;
-        }
         if (file.size > 10 * 1024 * 1024) {
-            showToast('Imagem muito grande. Máximo: 10 MB', 'error');
+            showToast('Arquivo muito grande. Máximo: 10 MB', 'error');
             return;
         }
 
@@ -469,8 +473,8 @@ Modules.Chat = {
     },
 
     async _uploadFile(file) {
-        const ext  = file.name.includes('.') ? file.name.split('.').pop() : 'jpg';
-        const path = `${this._uid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const ext  = file.name.includes('.') ? file.name.split('.').pop() : '';
+        const path = `${this._uid}/${Date.now()}_${Math.random().toString(36).slice(2)}${ext ? '.' + ext : ''}`;
 
         const { error } = await supabase.storage
             .from('chat-anexos')
@@ -482,22 +486,37 @@ Modules.Chat = {
         return urlData?.publicUrl || null;
     },
 
+    _fileExt(name) {
+        return name && name.includes('.') ? name.split('.').pop().toUpperCase().slice(0, 4) : '';
+    },
+
     _showFilePreview(file) {
         const preview = document.getElementById('chat-file-preview');
         if (!preview) return;
         preview.style.display = 'flex';
 
-        const reader = new FileReader();
-        reader.onload = ev => {
-            preview.innerHTML = `
-                <div class="chat-preview-item">
-                    <img src="${ev.target.result}" class="chat-preview-img" alt="">
-                    <span class="chat-preview-name">${escapeHtml(file.name)}</span>
-                    <span class="chat-preview-badge">${this._uploading ? 'Enviando…' : 'Pronto'}</span>
-                    <button class="chat-preview-remove" onclick="Modules.Chat._clearPendingFile()">×</button>
-                </div>`;
-        };
-        reader.readAsDataURL(file);
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = ev => {
+                preview.innerHTML = `
+                    <div class="chat-preview-item">
+                        <img src="${ev.target.result}" class="chat-preview-img" alt="">
+                        <span class="chat-preview-name">${escapeHtml(file.name)}</span>
+                        <span class="chat-preview-badge">${this._uploading ? 'Enviando…' : 'Pronto'}</span>
+                        <button class="chat-preview-remove" onclick="Modules.Chat._clearPendingFile()">×</button>
+                    </div>`;
+            };
+            reader.readAsDataURL(file);
+            return;
+        }
+
+        preview.innerHTML = `
+            <div class="chat-preview-item">
+                <span class="chat-preview-ext">${escapeHtml(this._fileExt(file.name))}</span>
+                <span class="chat-preview-name">${escapeHtml(file.name)}</span>
+                <span class="chat-preview-badge">${this._uploading ? 'Enviando…' : 'Pronto'}</span>
+                <button class="chat-preview-remove" onclick="Modules.Chat._clearPendingFile()">×</button>
+            </div>`;
     },
 
     _clearPendingFile() {
