@@ -587,6 +587,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .badge-role-professor   { background: var(--color-purple-bg); color: var(--color-purple); }
 .badge-role-aluno       { background: var(--color-blue-bg); color: var(--color-blue); }
 .badge-role-psicopedagoga { background: #fdf4ff; color: #9333ea; }
+.badge-role-mentor        { background: #f0fdfa; color: var(--color-teal); }
 
 .badge-psico-geral         { background: var(--color-surface-2); color: var(--color-text-2); }
 .badge-psico-comportamental{ background: var(--color-red-bg); color: var(--color-red); }
@@ -1468,6 +1469,39 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 }
 
 .radio-list { display: flex; flex-direction: column; gap: 6px; }
+
+.prof-filter-wrap { position: relative; }
+
+.prof-filter-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 60;
+    width: 260px;
+    max-width: 90vw;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 12px;
+}
+
+.prof-filter-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border-soft);
+}
+
+.prof-filter-list {
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 
 .radio-item {
     display: flex;

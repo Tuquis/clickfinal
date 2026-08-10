@@ -25,6 +25,7 @@ Modules.Usuarios = {
                         <option value="professor">Professor</option>
                         <option value="aluno">Aluno</option>
                         <option value="psicopedagoga">Psicopedagoga</option>
+                        <option value="mentor">Mentor</option>
                     </select>
                 </div>
                 <div id="usuarios-list" class="card-body">
@@ -68,6 +69,7 @@ Modules.Usuarios = {
                                 <option value="professor">Professor</option>
                                 <option value="aluno">Aluno</option>
                                 <option value="psicopedagoga">Psicopedagoga</option>
+                                <option value="mentor">Mentor</option>
                             </select>
                         </div>
 
@@ -150,6 +152,17 @@ Modules.Usuarios = {
                                     placeholder="(71) 99999-9999" />
                             </div>
                         </div>
+
+                        <!-- Campos extras para MENTOR -->
+                        <div id="u-mentor-fields" style="display:none">
+                            <hr class="divider" />
+                            <p class="form-section-title">Informações do Mentor</p>
+                            <div class="form-group">
+                                <label class="form-label">Telefone do Mentor</label>
+                                <input type="tel" class="input" id="u-telefone-mentor"
+                                    placeholder="(71) 99999-9999" />
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-ghost" onclick="closeModal('modal-usuario')">Cancelar</button>
@@ -211,6 +224,7 @@ Modules.Usuarios = {
         document.getElementById('u-aluno-fields').style.display     = v === 'aluno'         ? 'block' : 'none';
         document.getElementById('u-professor-fields').style.display = v === 'professor'     ? 'block' : 'none';
         document.getElementById('u-psico-fields').style.display     = v === 'psicopedagoga' ? 'block' : 'none';
+        document.getElementById('u-mentor-fields').style.display    = v === 'mentor'        ? 'block' : 'none';
     },
 
     _toggleSenha() {
@@ -316,6 +330,7 @@ Modules.Usuarios = {
         document.getElementById('u-aluno-fields').style.display     = 'none';
         document.getElementById('u-professor-fields').style.display = 'none';
         document.getElementById('u-psico-fields').style.display     = 'none';
+        document.getElementById('u-mentor-fields').style.display    = 'none';
         ['u-serie','u-disciplina','u-responsavel','u-telefone','u-telefone-aluno'].forEach(function(id) {
             document.getElementById(id).value = '';
         });
@@ -326,6 +341,7 @@ Modules.Usuarios = {
         document.getElementById('u-telefone-professor').value = '';
         document.getElementById('u-psico-meet').value     = '';
         document.getElementById('u-telefone-psico').value = '';
+        document.getElementById('u-telefone-mentor').value = '';
         openModal('modal-usuario');
     },
 
@@ -347,6 +363,7 @@ Modules.Usuarios = {
         document.getElementById('u-aluno-fields').style.display     = 'none';
         document.getElementById('u-professor-fields').style.display = 'none';
         document.getElementById('u-psico-fields').style.display     = 'none';
+        document.getElementById('u-mentor-fields').style.display    = 'none';
 
         if (u.role === 'aluno') {
             document.getElementById('u-aluno-fields').style.display = 'block';
@@ -376,6 +393,12 @@ Modules.Usuarios = {
             if (psRes.data) {
                 document.getElementById('u-psico-meet').value     = psRes.data.link_meet || '';
                 document.getElementById('u-telefone-psico').value = psRes.data.telefone  || '';
+            }
+        } else if (u.role === 'mentor') {
+            document.getElementById('u-mentor-fields').style.display = 'block';
+            var mtRes = await supabase.from('mentor_info').select('telefone').eq('usuario_id', id).single();
+            if (mtRes.data) {
+                document.getElementById('u-telefone-mentor').value = mtRes.data.telefone || '';
             }
         }
         openModal('modal-usuario');
@@ -430,9 +453,10 @@ Modules.Usuarios = {
             if (!senha || senha.length < 6) errors.push('Senha deve ter pelo menos 6 caracteres');
         }
 
-        var alunoData = null;
-        var profData  = null;
-        var psicoData = null;
+        var alunoData  = null;
+        var profData   = null;
+        var psicoData  = null;
+        var mentorData = null;
 
         if (role === 'aluno') {
             var serie          = document.getElementById('u-serie').value.trim();
@@ -466,6 +490,11 @@ Modules.Usuarios = {
             psicoData = { link_meet: psicoMeet || null, telefone: telefonePsico || null };
         }
 
+        if (role === 'mentor') {
+            var telefoneMentor = document.getElementById('u-telefone-mentor').value.trim();
+            mentorData = { telefone: telefoneMentor || null };
+        }
+
         if (errors.length) return showToast(errors[0], 'error');
 
         setLoading('#btn-save-usuario', true);
@@ -488,6 +517,11 @@ Modules.Usuarios = {
                     var upsPs = await supabase.from('psico_info')
                         .upsert({ usuario_id: id, ...psicoData }, { onConflict: 'usuario_id' });
                     if (upsPs.error) throw upsPs.error;
+                }
+                if (role === 'mentor' && mentorData) {
+                    var upsMt = await supabase.from('mentor_info')
+                        .upsert({ usuario_id: id, ...mentorData }, { onConflict: 'usuario_id' });
+                    if (upsMt.error) throw upsMt.error;
                 }
 
                 await auditLog('USUARIO_ATUALIZADO', 'usuarios', id, { nome });
@@ -528,7 +562,13 @@ Modules.Usuarios = {
                 } else if (role === 'psicopedagoga') {
                     await supabase.from('psico_info').insert({
                         usuario_id: newUser.id,
-                        link_meet:  psicoData ? psicoData.link_meet : null
+                        link_meet:  psicoData ? psicoData.link_meet : null,
+                        telefone:   psicoData ? psicoData.telefone  : null
+                    });
+                } else if (role === 'mentor') {
+                    await supabase.from('mentor_info').insert({
+                        usuario_id: newUser.id,
+                        telefone:   mentorData ? mentorData.telefone : null
                     });
                 }
 

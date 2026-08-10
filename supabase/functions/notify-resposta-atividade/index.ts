@@ -5,6 +5,9 @@ import { enviarTemplate } from '../_shared/meta.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Mesmo número que já recebe os relatórios pós-aula (notify-relatorio)
+const NUMERO_MENTOR = '5575988411649';
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function sendTemplate(phone: string, templateName: string, params: string[]) {
@@ -40,9 +43,13 @@ serve(async (req) => {
         const professorId = resposta.atividade?.professor_id;
         const alunoNome   = resposta.aluno?.nome || 'Aluno';
         const atTitulo    = resposta.atividade?.titulo || 'atividade';
+        const params      = [alunoNome, atTitulo];
+
+        // Cópia para o mentor/suporte — independe do telefone do professor
+        const mentorEnviado = await sendTemplate(NUMERO_MENTOR, 'resposta_atividade_professor', params);
 
         if (!professorId) {
-            return new Response(JSON.stringify({ ok: false, motivo: 'atividade sem professor_id' }), { status: 200 });
+            return new Response(JSON.stringify({ ok: false, motivo: 'atividade sem professor_id', mentorEnviado }), { status: 200 });
         }
 
         // Busca telefone do professor (coluna é usuario_id, não professor_id)
@@ -51,12 +58,12 @@ serve(async (req) => {
 
         const telefone = profInfo?.telefone;
         if (!telefone) {
-            return new Response(JSON.stringify({ ok: false, motivo: 'professor sem telefone cadastrado', professorId }), { status: 200 });
+            return new Response(JSON.stringify({ ok: false, motivo: 'professor sem telefone cadastrado', professorId, mentorEnviado }), { status: 200 });
         }
 
-        const enviado = await sendTemplate(telefone, 'resposta_atividade_professor', [alunoNome, atTitulo]);
+        const enviado = await sendTemplate(telefone, 'resposta_atividade_professor', params);
 
-        return new Response(JSON.stringify({ ok: enviado, professorId, telefone }), { status: 200 });
+        return new Response(JSON.stringify({ ok: enviado, professorId, telefone, mentorEnviado }), { status: 200 });
     } catch (e) {
         return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
     }

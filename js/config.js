@@ -40,7 +40,8 @@ var ROLE_LABELS = {
     admin: 'Administrador',
     professor: 'Professor',
     aluno: 'Aluno',
-    psicopedagoga: 'Psicopedagoga'
+    psicopedagoga: 'Psicopedagoga',
+    mentor: 'Mentor'
 };
 
 // Dias da semana

@@ -68,6 +68,10 @@ const SIDEBAR_ITEMS = {
         { id: 'agenda',         icon: '📅', label: 'Agenda' },
         { id: 'relatorios',     icon: '📄', label: 'Relatórios' },
         { id: 'psicopedagogia', icon: '🧠', label: 'Iniciar Consulta' },
+    ],
+    mentor: [
+        { id: 'dashboard', icon: '⊞', label: 'Dashboard' },
+        { id: 'agenda',    icon: '📅', label: 'Agenda' },
     ]
 };
 

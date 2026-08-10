@@ -35,6 +35,11 @@ Modules.Agenda = {
         return d.toISOString().split('T')[0];
     },
 
+    _toMinutes(hhmm) {
+        const [h, m] = (hhmm || '00:00').split(':').map(Number);
+        return h * 60 + m;
+    },
+
     _profColor(profId) {
         if (!profId) return 0;
         let hash = 0;
@@ -57,21 +62,30 @@ Modules.Agenda = {
     async render() {
         this._tab = 'agenda';
         this._page = 1;
-        this._filters = { status: '', data: '' };
+        this._filters = { status: '', data: '', professorIds: [] };
         this._weekStart = this._getWeekStart();
 
-        const isAdmin = Auth.can('admin');
-        const isProf  = Auth.can('professor');
-        const isAluno = Auth.can('aluno');
-        const isPsico = Auth.can('psicopedagoga');
+        const isAdmin  = Auth.can('admin');
+        const isProf   = Auth.can('professor');
+        const isAluno  = Auth.can('aluno');
+        const isPsico  = Auth.can('psicopedagoga');
+        const isMentor = Auth.can('mentor');
+
+        this._allProfessores = [];
+        if (isAdmin) {
+            const { data: profsFiltro } = await supabase
+                .from('usuarios').select('id,nome').eq('role','professor').eq('ativo',true).order('nome');
+            this._allProfessores = profsFiltro || [];
+        }
 
         renderContent(`
             <div class="page-header">
-                <h1 class="page-title">Agenda${isProf ? ' — Minhas Aulas' : isAluno ? ' — Minhas Aulas' : isPsico ? ' — Minhas Consultas' : ''}</h1>
+                <h1 class="page-title">Agenda${isProf ? ' — Minhas Aulas' : isAluno ? ' — Minhas Aulas' : isPsico ? ' — Minhas Consultas' : isMentor ? ' — Minhas Mentorias' : ''}</h1>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     ${isAdmin ? `
                         <button class="btn btn-primary" onclick="Modules.Agenda.openCreate()">+ Agendar Aula</button>
                         <button class="btn btn-secondary" onclick="Modules.Agenda.openCreatePsico()">+ Consulta Psico</button>
+                        <button class="btn btn-secondary" onclick="Modules.Agenda.openCreateMentoria()">+ Mentoria</button>
                     ` : ''}
                 </div>
             </div>
@@ -82,7 +96,7 @@ Modules.Agenda = {
             </div>
 
             <!-- barra de controles -->
-            <div class="card" style="margin-bottom:16px;">
+            <div class="card" id="agenda-toolbar-card" style="margin-bottom:16px;overflow:visible;">
                 <div class="card-toolbar" id="agenda-toolbar" style="justify-content:space-between;">
                     <!-- filtros (mostrados em lista / histórico) -->
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;" id="agenda-filters">
@@ -93,6 +107,30 @@ Modules.Agenda = {
                             <option value="cancelada">Cancelada</option>
                         </select>
                         <input type="date" class="input" id="filter-data-agenda" onchange="Modules.Agenda._applyFilter()" style="max-width:160px;" />
+                        ${isAdmin ? `
+                            <div class="prof-filter-wrap" id="prof-filter-wrap">
+                                <button type="button" class="btn btn-ghost btn-sm" id="btn-prof-filter" onclick="Modules.Agenda._toggleProfFilter()">
+                                    👤 Professores<span id="prof-filter-count"></span>
+                                </button>
+                                <div class="prof-filter-popover" id="prof-filter-popover" style="display:none;">
+                                    <div class="prof-filter-actions">
+                                        <button type="button" class="btn btn-ghost btn-sm" onclick="Modules.Agenda._profFilterSelectAll()">Selecionar todos</button>
+                                        <button type="button" class="btn btn-ghost btn-sm" onclick="Modules.Agenda._profFilterClear()">Limpar</button>
+                                    </div>
+                                    <div class="prof-filter-list" id="prof-filter-list">
+                                        ${this._allProfessores.length
+                                            ? this._allProfessores.map(p => `
+                                                <label class="check-item">
+                                                    <input type="checkbox" value="${p.id}" onchange="Modules.Agenda._profFilterToggle('${p.id}', this.checked)" />
+                                                    ${escapeHtml(p.nome)}
+                                                </label>
+                                            `).join('')
+                                            : `<span class="text-muted small">Nenhum professor cadastrado</span>`
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
                         <button class="btn btn-ghost btn-sm" onclick="Modules.Agenda._clearFilters()">Limpar</button>
                     </div>
                     <!-- navegação calendário -->
@@ -272,6 +310,66 @@ Modules.Agenda = {
                     </div>
                 </div>
             </div>
+
+            <!-- MODAL DETALHES MENTORIA -->
+            <div class="modal-overlay" id="modal-mentoria-detalhes">
+                <div class="modal-box modal-lg">
+                    <div class="modal-header">
+                        <h3>Mentoria</h3>
+                        <button class="modal-close" onclick="closeModal('modal-mentoria-detalhes')">×</button>
+                    </div>
+                    <div class="modal-body" id="modal-mentoria-detalhes-body" style="gap:12px;"></div>
+                    <div class="modal-footer" id="modal-mentoria-detalhes-footer">
+                        <button class="btn btn-ghost" onclick="closeModal('modal-mentoria-detalhes')">Fechar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL AGENDAR MENTORIA (admin) -->
+            <div class="modal-overlay" id="modal-agenda-mentoria">
+                <div class="modal-box">
+                    <div class="modal-header">
+                        <h3>Agendar Mentoria</h3>
+                        <button class="modal-close" onclick="closeModal('modal-agenda-mentoria')">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Aluno *</label>
+                                <select class="input" id="agm-aluno"><option value="">Carregando...</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Mentor *</label>
+                                <select class="input" id="agm-mentor"><option value="">Carregando...</option></select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Data *</label>
+                                <input type="date" class="input" id="agm-data" min="${todayISO()}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Horário *</label>
+                                <input type="time" class="input" id="agm-horario" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Link Google Meet</label>
+                            <input type="url" class="input" id="agm-meet" placeholder="https://meet.google.com/..." />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Observações</label>
+                            <textarea class="input textarea" id="agm-obs" rows="2"
+                                placeholder="Observações sobre o agendamento (opcional)"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="closeModal('modal-agenda-mentoria')">Cancelar</button>
+                        <button class="btn btn-primary" id="btn-save-agenda-mentoria"
+                            onclick="Modules.Agenda.saveMentoria()">Agendar</button>
+                    </div>
+                </div>
+            </div>
         `);
 
         document.getElementById('ag-professor')?.addEventListener('change', async (e) => {
@@ -283,6 +381,18 @@ Modules.Agenda = {
             if (meetInput && pi?.link_meet) meetInput.value = pi.link_meet;
         });
 
+        if (Modules.Agenda._outsideClickHandler) {
+            document.removeEventListener('click', Modules.Agenda._outsideClickHandler);
+        }
+        Modules.Agenda._outsideClickHandler = function(e) {
+            const wrap = document.getElementById('prof-filter-wrap');
+            const pop  = document.getElementById('prof-filter-popover');
+            if (wrap && pop && pop.style.display !== 'none' && !wrap.contains(e.target)) {
+                pop.style.display = 'none';
+            }
+        };
+        document.addEventListener('click', Modules.Agenda._outsideClickHandler);
+
         this._updateUI();
         await this.loadList();
     },
@@ -291,7 +401,7 @@ Modules.Agenda = {
     _setTab(tab) {
         this._tab = tab;
         this._page = 1;
-        this._filters = { status: '', data: '' };
+        this._filters = { status: '', data: '', professorIds: this._filters.professorIds || [] };
 
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById('tab-btn-' + tab)?.classList.add('active');
@@ -346,9 +456,51 @@ Modules.Agenda = {
         const dataEl   = document.getElementById('filter-data-agenda');
         if (statusEl) statusEl.value = '';
         if (dataEl)   dataEl.value   = '';
-        this._filters = { status: '', data: '' };
+        this._filters = { status: '', data: '', professorIds: [] };
+        document.querySelectorAll('#prof-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+        this._updateProfFilterCount();
         this._page = 1;
         this.loadList();
+    },
+
+    // ── filtro de professores (admin) ──────────────────────────
+    _toggleProfFilter() {
+        const pop = document.getElementById('prof-filter-popover');
+        if (pop) pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
+    },
+
+    _profFilterToggle(profId, checked) {
+        const ids = this._filters.professorIds || [];
+        if (checked) {
+            if (!ids.includes(profId)) ids.push(profId);
+        } else {
+            this._filters.professorIds = ids.filter(id => id !== profId);
+        }
+        this._updateProfFilterCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    _profFilterSelectAll() {
+        this._filters.professorIds = (this._allProfessores || []).map(p => p.id);
+        document.querySelectorAll('#prof-filter-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+        this._updateProfFilterCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    _profFilterClear() {
+        this._filters.professorIds = [];
+        document.querySelectorAll('#prof-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+        this._updateProfFilterCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    _updateProfFilterCount() {
+        const count = (this._filters.professorIds || []).length;
+        const el = document.getElementById('prof-filter-count');
+        if (el) el.textContent = count > 0 ? ` (${count})` : '';
     },
 
     // ── navegação de semana ────────────────────────────────────
@@ -388,6 +540,10 @@ Modules.Agenda = {
 
         if (role === 'psicopedagoga') {
             await this._loadPsicoAgenda(container, uid, isHistorico);
+            return;
+        }
+        if (role === 'mentor') {
+            await this._loadMentorAgenda(container, uid, isHistorico);
             return;
         }
         if (isCalendar) {
@@ -451,6 +607,60 @@ Modules.Agenda = {
         `;
     },
 
+    // ── AGENDA MENTOR ──────────────────────────────────────────
+    async _loadMentorAgenda(container, uid, isHistorico) {
+        const today = todayISO();
+        let query = supabase
+            .from('agenda_mentoria')
+            .select(`id, data, horario, observacoes, status, link_meet,
+                aluno:usuarios!agenda_mentoria_aluno_id_fkey(nome)`)
+            .eq('mentor_id', uid)
+            .order('data', { ascending: !isHistorico })
+            .order('horario');
+
+        if (!isHistorico) {
+            query = query.eq('status', 'agendada').gte('data', today);
+        } else {
+            const dataFilter = this._filters.data;
+            const statusFilter = this._filters.status;
+            if (dataFilter)   query = query.eq('data', dataFilter);
+            if (statusFilter) query = query.eq('status', statusFilter);
+        }
+
+        const { data, error } = await query.limit(50);
+
+        if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
+
+        const _ST = { agendada: 'Agendada', realizada: 'Realizada', cancelada: 'Cancelada' };
+        const _SC = { agendada: 'badge-info', realizada: 'badge-success', cancelada: 'badge-secondary' };
+
+        if (!data?.length) {
+            container.innerHTML = emptyState(isHistorico ? 'Nenhuma mentoria no histórico' : 'Nenhuma mentoria agendada');
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="table">
+                <thead><tr>
+                    <th>Data</th><th>Horário</th><th>Aluno</th>
+                    <th>Observações</th><th>Status</th><th>Meet</th>
+                </tr></thead>
+                <tbody>
+                    ${data.map(a => `
+                        <tr>
+                            <td>${fmt.date(a.data)}</td>
+                            <td>${fmt.time(a.horario)}</td>
+                            <td>${escapeHtml(a.aluno?.nome || '—')}</td>
+                            <td style="font-size:.825rem;max-width:180px">${a.observacoes ? escapeHtml(a.observacoes) : '—'}</td>
+                            <td>${badge(_ST[a.status] || a.status, _SC[a.status] || 'badge-secondary')}</td>
+                            <td>${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-ghost btn-sm">📹 Meet</a>` : '—'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    },
+
     // ── VISUALIZAÇÃO CALENDÁRIO ────────────────────────────────
     async _loadCalendar(container, uid, role) {
         const weekDates = this._getWeekDates();
@@ -467,6 +677,9 @@ Modules.Agenda = {
 
         if (role === 'professor') query = query.eq('professor_id', uid);
         if (role === 'aluno')     query = query.eq('aluno_id', uid);
+        if (role === 'admin' && this._filters.professorIds?.length) {
+            query = query.in('professor_id', this._filters.professorIds);
+        }
 
         // Admin e Aluno: também carrega consultas psicopedagógicas agendadas
         const needsPsicoQuery = role === 'admin' || role === 'aluno';
@@ -481,28 +694,42 @@ Modules.Agenda = {
         if (role === 'aluno') psicoQ = psicoQ.eq('aluno_id', uid);
         const psicoQuery = psicoQ;
 
-        const [{ data, error }, { data: psicoData }] = await Promise.all([query, psicoQuery]);
+        // Admin e Aluno: também carrega mentorias agendadas
+        let mentoriaQ = needsPsicoQuery
+            ? supabase.from('agenda_mentoria')
+                .select(`id, data, horario, status, observacoes, link_meet,
+                    aluno:usuarios!agenda_mentoria_aluno_id_fkey(nome),
+                    mentor:usuarios!agenda_mentoria_mentor_id_fkey(nome)`)
+                .gte('data', startISO).lte('data', endISO).eq('status', 'agendada')
+                .order('horario')
+            : Promise.resolve({ data: [] });
+        if (role === 'aluno') mentoriaQ = mentoriaQ.eq('aluno_id', uid);
+        const mentoriaQuery = mentoriaQ;
+
+        const [{ data, error }, { data: psicoData }, { data: mentoriaData }] = await Promise.all([query, psicoQuery, mentoriaQuery]);
         if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
 
-        // agrupa por data — marca consultas psico com _psico: true
+        // agrupa por data — marca consultas psico com _psico: true, mentorias com _mentoria: true
         const byDate = {};
         weekDates.forEach(d => { byDate[this._isoDate(d)] = []; });
         (data || []).forEach(a => { if (byDate[a.data]) byDate[a.data].push(a); });
         (psicoData || []).forEach(a => { if (byDate[a.data]) byDate[a.data].push({ ...a, _psico: true }); });
+        (mentoriaData || []).forEach(a => { if (byDate[a.data]) byDate[a.data].push({ ...a, _mentoria: true }); });
 
         const today     = todayISO();
         const isAdmin   = Auth.can('admin');
         const dayNames  = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
-        const totalAulas  = (data || []).length;
-        const totalPsico  = (psicoData || []).length;
-        const totalGeral  = totalAulas + totalPsico;
+        const totalAulas    = (data || []).length;
+        const totalPsico    = (psicoData || []).length;
+        const totalMentoria = (mentoriaData || []).length;
+        const totalGeral    = totalAulas + totalPsico + totalMentoria;
 
         container.innerHTML = `
             <div class="cal-summary">
                 ${totalGeral === 0
                     ? `<span class="cal-summary-empty">Nenhuma aula agendada nesta semana</span>`
-                    : `<span class="cal-summary-count">${totalAulas} aula${totalAulas !== 1 ? 's' : ''}${totalPsico > 0 ? ` · ${totalPsico} consulta${totalPsico !== 1 ? 's' : ''} psico` : ''} nesta semana</span>`
+                    : `<span class="cal-summary-count">${totalAulas} aula${totalAulas !== 1 ? 's' : ''}${totalPsico > 0 ? ` · ${totalPsico} consulta${totalPsico !== 1 ? 's' : ''} psico` : ''}${totalMentoria > 0 ? ` · ${totalMentoria} mentoria${totalMentoria !== 1 ? 's' : ''}` : ''} nesta semana</span>`
                 }
             </div>
             <div class="cal-scroll-wrapper">
@@ -534,6 +761,17 @@ Modules.Agenda = {
                                                     <div class="cal-event-aluno">${escapeHtml(a.aluno?.nome || '—')}</div>
                                                     <div class="cal-event-prof">🧠 ${escapeHtml(a.psico?.nome || '—')}</div>
                                                     <div class="cal-event-subject" style="font-size:.7rem;color:#7c3aed">Consulta Psicopedagógica</div>
+                                                    ${a.link_meet ? `<div class="cal-event-meet">📹 Meet</div>` : ''}
+                                                </div>`;
+                                        }
+                                        if (a._mentoria) {
+                                            return `
+                                                <div class="cal-event" style="background:#f0fdfa;border-left:3px solid #0d9488;cursor:pointer"
+                                                    onclick="Modules.Agenda.viewDetailsMentoria('${a.id}')">
+                                                    <div class="cal-event-time">🕐 ${fmt.time(a.horario)}</div>
+                                                    <div class="cal-event-aluno">${escapeHtml(a.aluno?.nome || '—')}</div>
+                                                    <div class="cal-event-prof">🎯 ${escapeHtml(a.mentor?.nome || '—')}</div>
+                                                    <div class="cal-event-subject" style="font-size:.7rem;color:#0d9488">Mentoria</div>
                                                     ${a.link_meet ? `<div class="cal-event-meet">📹 Meet</div>` : ''}
                                                 </div>`;
                                         }
@@ -572,6 +810,9 @@ Modules.Agenda = {
 
         if (role === 'professor') query = query.eq('professor_id', uid);
         if (role === 'aluno')     query = query.eq('aluno_id', uid);
+        if (role === 'admin' && this._filters.professorIds?.length) {
+            query = query.in('professor_id', this._filters.professorIds);
+        }
 
         if (isHistorico) {
             query = query
@@ -592,8 +833,9 @@ Modules.Agenda = {
         const from = (this._page - 1) * APP_CONFIG.paginationSize;
         query = query.range(from, from + APP_CONFIG.paginationSize - 1);
 
-        // Aluno: carregar também consultas psicopedagógicas em paralelo
+        // Aluno: carregar também consultas psicopedagógicas e mentorias em paralelo
         let psicoPromise = Promise.resolve({ data: [] });
+        let mentoriaPromise = Promise.resolve({ data: [] });
         if (role === 'aluno') {
             let pq = supabase.from('agenda_psico')
                 .select(`id, data, horario, status, link_meet, observacoes,
@@ -609,13 +851,32 @@ Modules.Agenda = {
             }
             if (this._filters.data) pq = pq.eq('data', this._filters.data);
             psicoPromise = pq.limit(20);
+
+            let mq = supabase.from('agenda_mentoria')
+                .select(`id, data, horario, status, link_meet, observacoes,
+                    mentor:usuarios!agenda_mentoria_mentor_id_fkey(nome)`)
+                .eq('aluno_id', uid)
+                .order('data', { ascending: !isHistorico })
+                .order('horario');
+            if (isHistorico) {
+                mq = mq.or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`);
+                if (this._filters.status) mq = mq.eq('status', this._filters.status);
+            } else {
+                mq = mq.eq('status', 'agendada').gte('data', todayISO());
+            }
+            if (this._filters.data) mq = mq.eq('data', this._filters.data);
+            mentoriaPromise = mq.limit(20);
         }
 
-        const [{ data, error, count }, { data: psicoData }] = await Promise.all([query, psicoPromise]);
+        const [{ data, error, count }, { data: psicoData }, { data: mentoriaData }] = await Promise.all([query, psicoPromise, mentoriaPromise]);
         if (error) { container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`; return; }
 
-        // Mesclar consultas psico com flag _psico
-        let displayData = [...(data || []), ...(psicoData || []).map(p => ({ ...p, _psico: true }))];
+        // Mesclar consultas psico e mentorias com flags _psico / _mentoria
+        let displayData = [
+            ...(data || []),
+            ...(psicoData || []).map(p => ({ ...p, _psico: true })),
+            ...(mentoriaData || []).map(m => ({ ...m, _mentoria: true }))
+        ];
         // Re-ordenar por data+horário após merge
         displayData.sort((a, b) => {
             const cmp = a.data.localeCompare(b.data);
@@ -681,6 +942,27 @@ Modules.Agenda = {
                                                     <div class="agenda-aula-actions">
                                                         ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-primary btn-sm">📹 Meet</a>` : ''}
                                                         <button class="btn btn-ghost btn-sm" onclick="Modules.Agenda.viewDetailsPsico('${a.id}')">Detalhes</button>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }
+                                        if (a._mentoria) {
+                                            const _ST3 = { agendada: 'Agendada', realizada: 'Realizada', cancelada: 'Cancelada' };
+                                            const _SC3 = { agendada: 'badge-info', realizada: 'badge-success', cancelada: 'badge-secondary' };
+                                            return `
+                                                <div class="agenda-aula-card" style="border-left:3px solid #0d9488;background:#f0fdfa;">
+                                                    <div class="agenda-aula-time">${fmt.time(a.horario)}</div>
+                                                    <div class="agenda-aula-info">
+                                                        <div class="agenda-aula-top">
+                                                            <span class="agenda-aula-aluno">🎯 Mentoria</span>
+                                                            <span class="agenda-aula-prof">com ${escapeHtml(a.mentor?.nome || '—')}</span>
+                                                            ${badge(_ST3[a.status] || a.status, _SC3[a.status] || 'badge-secondary')}
+                                                        </div>
+                                                        ${a.observacoes ? `<div class="agenda-aula-disc" style="color:#0d9488">${escapeHtml(a.observacoes)}</div>` : ''}
+                                                    </div>
+                                                    <div class="agenda-aula-actions">
+                                                        ${a.link_meet ? `<a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-primary btn-sm">📹 Meet</a>` : ''}
+                                                        <button class="btn btn-ghost btn-sm" onclick="Modules.Agenda.viewDetailsMentoria('${a.id}')">Detalhes</button>
                                                     </div>
                                                 </div>
                                             `;
@@ -890,18 +1172,21 @@ Modules.Agenda = {
         if (data && data < todayISO()) errors.push('A data não pode ser no passado');
         if (errors.length) return showToast(errors[0], 'error');
 
-        // Verifica conflito de horário para o professor
+        // Verifica intervalo mínimo de 1h05 entre aulas do mesmo professor no dia
         let conflitoQuery = supabase
             .from('agenda_meet')
-            .select('id', { count: 'exact', head: true })
+            .select('id, horario')
             .eq('professor_id', professorId)
             .eq('data',         data)
-            .eq('horario',      horario)
             .neq('status',      'cancelada');
         if (id) conflitoQuery = conflitoQuery.neq('id', id);
-        const { count: conflito } = await conflitoQuery;
-        if (conflito > 0) {
-            return showToast('Este professor já tem uma aula agendada nesse horário. Revise e tente em um novo horário.', 'error', 5000);
+        const { data: aulasProfessorDia, error: errConflito } = await conflitoQuery;
+        if (errConflito) return showToast(errConflito.message, 'error');
+
+        const novoMin = this._toMinutes(horario);
+        const temConflito = (aulasProfessorDia || []).some(a => Math.abs(this._toMinutes(a.horario) - novoMin) < 65);
+        if (temConflito) {
+            return showToast('É necessário um intervalo mínimo de 1h05 entre as aulas deste professor. Revise e tente em um novo horário.', 'error', 6000);
         }
 
         setLoading('#btn-save-agenda', true);
@@ -1037,6 +1322,89 @@ Modules.Agenda = {
         await this.loadList();
     },
 
+    // ── DETALHES MENTORIA ──────────────────────────────────────
+    async viewDetailsMentoria(id) {
+        openModal('modal-mentoria-detalhes');
+        const body   = document.getElementById('modal-mentoria-detalhes-body');
+        const footer = document.getElementById('modal-mentoria-detalhes-footer');
+        body.innerHTML = '<div class="loader-inline"></div>';
+        footer.innerHTML = `<button class="btn btn-ghost" onclick="closeModal('modal-mentoria-detalhes')">Fechar</button>`;
+
+        const { data: a, error } = await supabase
+            .from('agenda_mentoria')
+            .select(`id, data, horario, status, observacoes, link_meet,
+                        aluno:usuarios!agenda_mentoria_aluno_id_fkey(nome),
+                        mentor:usuarios!agenda_mentoria_mentor_id_fkey(nome)`)
+            .eq('id', id).single();
+
+        if (error || !a) {
+            body.innerHTML = '<p class="text-danger">Mentoria não encontrada.</p>';
+            return;
+        }
+
+        const s = { agendada: { label: 'Agendada', cls: 'badge-info' }, realizada: { label: 'Realizada', cls: 'badge-success' }, cancelada: { label: 'Cancelada', cls: 'badge-secondary' } };
+        const st = s[a.status] || { label: a.status, cls: 'badge-secondary' };
+
+        body.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Aluno</div>
+                    <div style="font-weight:600;font-size:1rem">${escapeHtml(a.aluno?.nome || '—')}</div>
+                </div>
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Mentor</div>
+                    <div style="font-weight:600;font-size:1rem">🎯 ${escapeHtml(a.mentor?.nome || '—')}</div>
+                </div>
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Data</div>
+                    <div style="font-weight:600">${fmt.date(a.data)}</div>
+                </div>
+                <div>
+                    <div class="form-label" style="margin-bottom:4px">Horário</div>
+                    <div style="font-weight:600">${fmt.time(a.horario)}</div>
+                </div>
+            </div>
+            <div>
+                <div class="form-label" style="margin-bottom:6px">Status</div>
+                ${badge(st.label, st.cls)}
+            </div>
+            ${a.link_meet ? `
+            <div>
+                <div class="form-label" style="margin-bottom:6px">Link Google Meet</div>
+                <a href="${escapeHtml(a.link_meet)}" target="_blank" class="btn btn-primary btn-sm">📹 Entrar na reunião</a>
+            </div>` : ''}
+            ${a.observacoes ? `
+            <div>
+                <div class="form-label" style="margin-bottom:6px">Observações</div>
+                <div style="background:var(--color-surface-2);border-radius:var(--radius-sm);padding:14px 16px;font-size:.9375rem;line-height:1.7;white-space:pre-wrap;border-left:3px solid #0d9488">${escapeHtml(a.observacoes)}</div>
+            </div>` : ''}
+        `;
+
+        if (Auth.can('admin') && a.status === 'agendada') {
+            footer.innerHTML += `
+                <button class="btn btn-danger btn-sm"
+                    onclick="closeModal('modal-mentoria-detalhes');Modules.Agenda.cancelarMentoria('${a.id}')">
+                    Cancelar Mentoria
+                </button>`;
+        }
+    },
+
+    async cancelarMentoria(id) {
+        const confirmed = await confirmAction('Confirma o cancelamento desta mentoria?');
+        if (!confirmed) return;
+
+        const { error } = await supabase
+            .from('agenda_mentoria')
+            .update({ status: 'cancelada' })
+            .eq('id', id);
+
+        if (error) return showToast(error.message, 'error');
+
+        await auditLog('MENTORIA_CANCELADA', 'agenda_mentoria', id, { status: 'cancelada' });
+        showToast('Mentoria cancelada', 'success');
+        await this.loadList();
+    },
+
     // ── CONSULTA PSICO ────────────────────────────────────────
     async openCreatePsico() {
         const [{ data: alunos }, { data: psicos }] = await Promise.all([
@@ -1106,6 +1474,69 @@ Modules.Agenda = {
             showToast(err.message || 'Erro ao agendar', 'error');
         } finally {
             setLoading('#btn-save-agenda-psico', false);
+        }
+    },
+
+    // ── MENTORIA ───────────────────────────────────────────────
+    async openCreateMentoria() {
+        const [{ data: alunos }, { data: mentores }] = await Promise.all([
+            supabase.from('usuarios').select('id,nome').eq('role','aluno').eq('ativo',true).order('nome'),
+            supabase.from('usuarios').select('id,nome').eq('role','mentor').eq('ativo',true).order('nome')
+        ]);
+
+        document.getElementById('agm-aluno').innerHTML =
+            `<option value="">Selecionar aluno...</option>` +
+            (alunos?.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join('') || '');
+        document.getElementById('agm-mentor').innerHTML =
+            `<option value="">Selecionar mentor...</option>` +
+            (mentores?.map(m => `<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join('') || '');
+
+        document.getElementById('agm-data').value    = '';
+        document.getElementById('agm-data').min      = todayISO();
+        document.getElementById('agm-horario').value = '';
+        document.getElementById('agm-meet').value    = '';
+        document.getElementById('agm-obs').value     = '';
+
+        openModal('modal-agenda-mentoria');
+    },
+
+    async saveMentoria() {
+        const alunoId  = document.getElementById('agm-aluno').value;
+        const mentorId = document.getElementById('agm-mentor').value;
+        const data     = document.getElementById('agm-data').value;
+        const horario  = document.getElementById('agm-horario').value;
+        const meet     = (document.getElementById('agm-meet').value || '').trim();
+        const obs      = (document.getElementById('agm-obs').value || '').trim();
+
+        const errors = validateForm([
+            { value: alunoId,  label: 'Aluno',   rules: ['required'] },
+            { value: mentorId, label: 'Mentor',  rules: ['required'] },
+            { value: data,     label: 'Data',    rules: ['required'] },
+            { value: horario,  label: 'Horário', rules: ['required'] }
+        ]);
+        if (data && data < todayISO()) errors.push('A data não pode ser no passado');
+        if (errors.length) return showToast(errors[0], 'error');
+
+        setLoading('#btn-save-agenda-mentoria', true);
+        try {
+            const { error } = await supabase.from('agenda_mentoria').insert({
+                aluno_id:    alunoId,
+                mentor_id:   mentorId,
+                data,
+                horario,
+                link_meet:   meet || null,
+                observacoes: obs || null,
+                created_by:  AppState.userProfile.id
+            });
+            if (error) throw error;
+
+            showToast('Mentoria agendada', 'success');
+            closeModal('modal-agenda-mentoria');
+            await this.loadList();
+        } catch (err) {
+            showToast(err.message || 'Erro ao agendar', 'error');
+        } finally {
+            setLoading('#btn-save-agenda-mentoria', false);
         }
     },
 

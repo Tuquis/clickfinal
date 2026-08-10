@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
     auth_id    UUID     UNIQUE,
     nome       TEXT     NOT NULL,
     email      TEXT     UNIQUE NOT NULL,
-    role       TEXT     NOT NULL CHECK (role IN ('admin','professor','aluno','psicopedagoga')),
+    role       TEXT     NOT NULL CHECK (role IN ('admin','professor','aluno','psicopedagoga','mentor')),
     ativo      BOOLEAN  DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -298,6 +298,30 @@ CREATE TABLE IF NOT EXISTS public.psico_info (
     UNIQUE(usuario_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.mentor_info (
+    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    usuario_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    telefone   TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(usuario_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.agenda_mentoria (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    aluno_id    UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    mentor_id   UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    data        DATE NOT NULL,
+    horario     TIME NOT NULL,
+    observacoes TEXT,
+    link_meet   TEXT,
+    status      TEXT NOT NULL DEFAULT 'agendada'
+        CHECK (status IN ('agendada','realizada','cancelada')),
+    created_by  UUID REFERENCES public.usuarios(id),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS public.consultas_psico (
     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     psico_id              UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
@@ -515,6 +539,8 @@ ALTER TABLE public.respostas_atividades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agenda_psico       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.psico_info         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consultas_psico    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_info        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agenda_mentoria    ENABLE ROW LEVEL SECURITY;
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -531,7 +557,7 @@ CREATE POLICY "usuarios_select" ON public.usuarios FOR SELECT
     USING (
         public.get_user_role() = 'admin'
         OR id = public.get_user_id()
-        OR public.get_user_role() IN ('professor','psicopedagoga')
+        OR public.get_user_role() IN ('professor','psicopedagoga','mentor')
         OR (public.get_user_role() = 'aluno' AND role = 'professor')
     );
 CREATE POLICY "usuarios_insert" ON public.usuarios FOR INSERT
@@ -899,6 +925,42 @@ CREATE POLICY "psico_info_own_update" ON public.psico_info
         usuario_id = (SELECT id FROM public.usuarios WHERE auth_id = auth.uid())
     );
 
+-- agenda_mentoria
+DROP POLICY IF EXISTS "agenda_mentoria_admin_all"    ON public.agenda_mentoria;
+DROP POLICY IF EXISTS "agenda_mentoria_mentor_own"   ON public.agenda_mentoria;
+DROP POLICY IF EXISTS "agenda_mentoria_aluno_select" ON public.agenda_mentoria;
+
+CREATE POLICY "agenda_mentoria_admin_all" ON public.agenda_mentoria
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.usuarios u WHERE u.auth_id = auth.uid() AND u.role = 'admin')
+    );
+CREATE POLICY "agenda_mentoria_mentor_own" ON public.agenda_mentoria
+    FOR ALL USING (
+        mentor_id = (SELECT id FROM public.usuarios WHERE auth_id = auth.uid())
+    );
+CREATE POLICY "agenda_mentoria_aluno_select" ON public.agenda_mentoria
+    FOR SELECT USING (
+        aluno_id = (SELECT id FROM public.usuarios WHERE auth_id = auth.uid())
+    );
+
+-- mentor_info
+DROP POLICY IF EXISTS "mentor_info_admin_all"  ON public.mentor_info;
+DROP POLICY IF EXISTS "mentor_info_own_select" ON public.mentor_info;
+DROP POLICY IF EXISTS "mentor_info_own_update" ON public.mentor_info;
+
+CREATE POLICY "mentor_info_admin_all" ON public.mentor_info
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.usuarios u WHERE u.auth_id = auth.uid() AND u.role = 'admin')
+    );
+CREATE POLICY "mentor_info_own_select" ON public.mentor_info
+    FOR SELECT USING (
+        usuario_id = (SELECT id FROM public.usuarios WHERE auth_id = auth.uid())
+    );
+CREATE POLICY "mentor_info_own_update" ON public.mentor_info
+    FOR UPDATE USING (
+        usuario_id = (SELECT id FROM public.usuarios WHERE auth_id = auth.uid())
+    );
+
 -- consultas_psico
 DROP POLICY IF EXISTS "psico_consulta_select" ON public.consultas_psico;
 DROP POLICY IF EXISTS "psico_consulta_insert" ON public.consultas_psico;
@@ -1154,6 +1216,10 @@ CREATE INDEX IF NOT EXISTS idx_agenda_psico_aluno  ON public.agenda_psico(aluno_
 CREATE INDEX IF NOT EXISTS idx_agenda_psico_psico  ON public.agenda_psico(psico_id);
 CREATE INDEX IF NOT EXISTS idx_agenda_psico_data   ON public.agenda_psico(data);
 CREATE INDEX IF NOT EXISTS idx_psico_info_usuario  ON public.psico_info(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_agenda_mentoria_aluno  ON public.agenda_mentoria(aluno_id);
+CREATE INDEX IF NOT EXISTS idx_agenda_mentoria_mentor ON public.agenda_mentoria(mentor_id);
+CREATE INDEX IF NOT EXISTS idx_agenda_mentoria_data   ON public.agenda_mentoria(data);
+CREATE INDEX IF NOT EXISTS idx_mentor_info_usuario    ON public.mentor_info(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_consultas_psico_aluno ON public.consultas_psico(aluno_id);
 CREATE INDEX IF NOT EXISTS idx_consultas_psico_psico ON public.consultas_psico(psico_id);
 CREATE INDEX IF NOT EXISTS idx_consultas_psico_data  ON public.consultas_psico(data DESC);

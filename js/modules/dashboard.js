@@ -11,6 +11,7 @@ Modules.Dashboard = {
             case 'professor':   return Modules.Dashboard._professor();
             case 'aluno':       return Modules.Dashboard._aluno();
             case 'psicopedagoga': return Modules.Dashboard._psico();
+            case 'mentor':       return Modules.Dashboard._mentor();
         }
     },
 
@@ -299,6 +300,59 @@ Modules.Dashboard = {
                             </div>
                         `).join('')
                         : emptyState('Nenhuma observação registrada')
+                    }
+                </div>
+            </div>
+        `);
+    },
+
+    async _mentor() {
+        const { count: totalAlunos } = await supabase
+            .from('usuarios')
+            .select('id', { count: 'exact', head: true })
+            .eq('role', 'aluno');
+
+        const { data: proximasMentorias } = await supabase
+            .from('agenda_mentoria')
+            .select(`id, data, horario, link_meet, observacoes,
+                aluno:usuarios!agenda_mentoria_aluno_id_fkey(nome)`)
+            .eq('mentor_id', AppState.userProfile.id)
+            .eq('status', 'agendada')
+            .gte('data', todayISO())
+            .order('data', { ascending: true })
+            .order('horario', { ascending: true })
+            .limit(5);
+
+        renderContent(`
+            <div class="page-header">
+                <h1 class="page-title">Painel do Mentor</h1>
+            </div>
+            <div class="stats-grid stats-grid-2">
+                ${Modules.Dashboard._statCard('Total de Alunos', totalAlunos || 0, '🎓', 'stat-blue')}
+                ${Modules.Dashboard._statCard('Próximas Mentorias', proximasMentorias?.length || 0, '🎯', 'stat-teal')}
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>Próximas Mentorias</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
+                </div>
+                <div class="card-body">
+                    ${proximasMentorias?.length
+                        ? proximasMentorias.map(m => `
+                            <div class="aula-card">
+                                <div class="aula-time">${fmt.time(m.horario)}</div>
+                                <div class="aula-info">
+                                    <div class="aula-aluno">${fmt.date(m.data)} — ${escapeHtml(m.aluno?.nome || '—')}</div>
+                                    ${m.observacoes ? `<div class="aula-conteudo">${escapeHtml(m.observacoes)}</div>` : ''}
+                                </div>
+                                <div class="aula-actions">
+                                    ${m.link_meet
+                                        ? `<a href="${escapeHtml(m.link_meet)}" target="_blank" class="btn btn-sm btn-primary">Entrar na Sala</a>`
+                                        : ''}
+                                </div>
+                            </div>
+                        `).join('')
+                        : emptyState('Nenhuma mentoria agendada')
                     }
                 </div>
             </div>

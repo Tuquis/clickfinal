@@ -5,6 +5,9 @@ import { enviarTemplate } from '../_shared/meta.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Mesmo número que já recebe os relatórios pós-aula (notify-relatorio)
+const NUMERO_MENTOR = '5575988411649';
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function sendTemplate(phone: string, templateName: string, params: string[]) {
@@ -45,6 +48,12 @@ serve(async (req) => {
             ? new Date(atividade.prazo + 'T12:00:00').toLocaleDateString('pt-BR')
             : null;
 
+        const primeiroNome = alunoNome.split(' ')[0];
+        const params = [primeiroNome, titulo, prazo || '—', profNome];
+
+        // Cópia para o mentor/suporte — independe do telefone do aluno
+        const mentorEnviado = await sendTemplate(NUMERO_MENTOR, 'nova_atividade_aluno', params);
+
         // Busca telefone do aluno — usa telefone_aluno, fallback para telefone (responsável)
         const { data: alunoInfo } = await supabase
             .from('alunos_info')
@@ -54,19 +63,12 @@ serve(async (req) => {
 
         const telefone = alunoInfo?.telefone_aluno || alunoInfo?.telefone;
         if (!telefone) {
-            return new Response(JSON.stringify({ ok: false, motivo: 'aluno sem telefone cadastrado', alunoId }), { status: 200 });
+            return new Response(JSON.stringify({ ok: false, motivo: 'aluno sem telefone cadastrado', alunoId, mentorEnviado }), { status: 200 });
         }
 
-        const primeiroNome = alunoNome.split(' ')[0];
+        const enviado = await sendTemplate(telefone, 'nova_atividade_aluno', params);
 
-        const enviado = await sendTemplate(telefone, 'nova_atividade_aluno', [
-            primeiroNome,
-            titulo,
-            prazo || '—',
-            profNome
-        ]);
-
-        return new Response(JSON.stringify({ ok: enviado, alunoId, telefone }), { status: 200 });
+        return new Response(JSON.stringify({ ok: enviado, alunoId, telefone, mentorEnviado }), { status: 200 });
     } catch (e) {
         return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
     }
