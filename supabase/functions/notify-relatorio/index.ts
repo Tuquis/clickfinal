@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { enviarTemplate, enviarDocumentoTemplateBase64 } from '../_shared/meta.ts';
+import { enviarTemplate, enviarDocumentoTemplateBase64, normalizarTelefone } from '../_shared/meta.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -31,9 +31,10 @@ async function sendText(params: string[]) {
   }
 }
 
-async function sendPDF(b64: string, filename: string) {
+async function sendPDF(telefone: string, b64: string, filename: string) {
   try {
-    await enviarDocumentoTemplateBase64(NUMERO_ADMIN, 'relatorio_pdf_documento', b64, filename);
+    // Template relatorio_pdf_documento foi aprovado na Meta em inglês (en)
+    await enviarDocumentoTemplateBase64(telefone, 'relatorio_pdf_documento', b64, filename, 'application/pdf', 'en');
     return true;
   } catch (e) {
     console.error('Meta API error (pdf):', e);
@@ -50,8 +51,27 @@ serve(async (req) => {
     const body = await req.json();
 
     // ── Modo PDF: enviado pelo cliente com o PDF já gerado ────────
+    // Sem telefoneResponsavel → cópia administrativa (comportamento original).
+    // Com telefoneResponsavel → envia direto para o responsável do aluno e marca como enviado.
     if (body.pdfBase64 && body.filename) {
-      const ok = await sendPDF(body.pdfBase64, body.filename);
+      const destino = body.telefoneResponsavel
+        ? normalizarTelefone(body.telefoneResponsavel)
+        : NUMERO_ADMIN;
+
+      if (!destino) {
+        return new Response(JSON.stringify({ error: 'Telefone do responsável inválido' }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+
+      const ok = await sendPDF(destino, body.pdfBase64, body.filename);
+
+      if (ok && body.telefoneResponsavel && body.relatorioId) {
+        const { error: updErr } = await supabase
+          .from('relatorios')
+          .update({ enviado_responsavel_em: new Date().toISOString() })
+          .eq('id', body.relatorioId);
+        if (updErr) console.error('Erro ao marcar relatório como enviado:', updErr);
+      }
+
       return new Response(JSON.stringify({ ok, tipo: 'pdf' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
 

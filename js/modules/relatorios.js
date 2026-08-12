@@ -70,6 +70,8 @@ Modules.Relatorios = {
                         <button class="btn btn-ghost" onclick="closeModal('modal-ver-relatorio')">Fechar</button>
                         <button class="btn btn-secondary"
                             onclick="Modules.Relatorios.exportPDF()">Exportar PDF</button>
+                        <button class="btn btn-primary" id="btn-enviar-responsavel"
+                            onclick="Modules.Relatorios.enviarParaResponsavel()">📤 Enviar para Responsável</button>
                     </div>
                 </div>
             </div>
@@ -683,6 +685,16 @@ Modules.Relatorios = {
         var r = res.data;
         if (!r) { body.innerHTML = emptyState('Relatório não encontrado'); return; }
 
+        // Telefone do responsável + estado de envio (para o botão "Enviar para Responsável")
+        this._viewingJaEnviado = !!r.enviado_responsavel_em;
+        var alunoInfoRes = await supabase
+            .from('alunos_info')
+            .select('telefone')
+            .eq('usuario_id', r.aluno_id)
+            .single();
+        this._viewingTelefoneResp = (alunoInfoRes.data && alunoInfoRes.data.telefone) || null;
+        this._updateBtnEnviarResponsavel();
+
         var hab   = r.habilidades || {};
         var comps = hab.comportamentos  || [];
         var acad  = hab.academicas      || [];
@@ -818,6 +830,20 @@ Modules.Relatorios = {
                 </div>` : ''}
             </div>
         `;
+    },
+
+    _updateBtnEnviarResponsavel() {
+        var btn = document.getElementById('btn-enviar-responsavel');
+        if (!btn) return;
+        if (!this._viewingTelefoneResp) {
+            btn.textContent = '📤 Enviar para Responsável';
+            btn.disabled = true;
+            btn.title = 'Responsável sem telefone cadastrado';
+        } else {
+            btn.textContent = this._viewingJaEnviado ? '🔄 Reenviar para Responsável' : '📤 Enviar para Responsável';
+            btn.disabled = false;
+            btn.title = '';
+        }
     },
 
     async _exportById(id) {
@@ -1073,6 +1099,52 @@ Modules.Relatorios = {
             body: { pdfBase64, filename }
         });
         if (fnErr) console.warn('notify-relatorio pdf error:', fnErr);
+    },
+
+    // ── Enviar/reenviar o PDF do relatório para o responsável ────
+    async enviarParaResponsavel() {
+        var id = this._viewingId;
+        if (!id) return showToast('Abra o relatório primeiro', 'error');
+        if (!this._viewingTelefoneResp) return showToast('Responsável sem telefone cadastrado', 'error');
+
+        var confirmMsg = this._viewingJaEnviado
+            ? 'Reenviar o relatório em PDF para o responsável via WhatsApp?'
+            : 'Enviar o relatório em PDF para o responsável via WhatsApp?';
+        var confirmed = await confirmAction(confirmMsg);
+        if (!confirmed) return;
+
+        setLoading('#btn-enviar-responsavel', true);
+        try {
+            var res = await supabase
+                .from('relatorios')
+                .select(`*, aluno:usuarios!relatorios_aluno_id_fkey(nome), professor:usuarios!relatorios_professor_id_fkey(nome)`)
+                .eq('id', id)
+                .single();
+            var r = res.data;
+            if (!r) { showToast('Relatório não encontrado', 'error'); return; }
+
+            var alunoNome   = (r.aluno && r.aluno.nome) || '—';
+            var profNome    = (r.professor && r.professor.nome) || '—';
+            var doc         = this._gerarDocPDF(r, alunoNome, profNome);
+            var pdfBase64   = doc.output('datauristring').split(',')[1];
+            var nomeArquivo = alunoNome.trim().split(/\s+/).slice(0,3)
+                .map(function(p){ return p.toLowerCase().replace(/[^a-z0-9]/g,''); })
+                .filter(Boolean).join('-') || 'aluno';
+            var filename    = 'Relatorio-' + nomeArquivo + '.pdf';
+
+            var { data: fnData, error: fnErr } = await supabase.functions.invoke('notify-relatorio', {
+                body: { pdfBase64, filename, relatorioId: id, telefoneResponsavel: this._viewingTelefoneResp }
+            });
+            if (fnErr || !fnData || !fnData.ok) throw new Error((fnErr && fnErr.message) || 'Falha ao enviar pelo WhatsApp');
+
+            this._viewingJaEnviado = true;
+            this._updateBtnEnviarResponsavel();
+            showToast('Relatório enviado ao responsável!', 'success');
+        } catch (err) {
+            showToast(err.message || 'Erro ao enviar para o responsável', 'error');
+        } finally {
+            setLoading('#btn-enviar-responsavel', false);
+        }
     },
 
     // ── AULA SEM ALUNO ────────────────────────────────────────────

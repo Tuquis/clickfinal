@@ -377,6 +377,18 @@ Modules.Atividades = {
             });
             if (error) throw error;
 
+            // Marca a tarefa correspondente no cronograma como concluída (não bloqueia o fluxo se falhar)
+            supabase.from('cronograma_tarefas')
+                .update({
+                    status:        'concluida',
+                    evidencia_url: url,
+                    concluida_em:  new Date().toISOString()
+                })
+                .eq('atividade_id', atividadeId)
+                .then(({ error: cronErr }) => {
+                    if (cronErr) console.warn('Não foi possível atualizar o cronograma:', cronErr.message);
+                });
+
             showToast('Resposta enviada com sucesso!', 'success');
             closeModal('modal-resposta-atividade');
             await this._loadList();

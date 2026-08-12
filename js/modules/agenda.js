@@ -62,7 +62,7 @@ Modules.Agenda = {
     async render() {
         this._tab = 'agenda';
         this._page = 1;
-        this._filters = { status: '', data: '', professorIds: [] };
+        this._filters = { status: '', data: '', professorIds: [], alunoIds: [], categorias: [] };
         this._weekStart = this._getWeekStart();
 
         const isAdmin  = Auth.can('admin');
@@ -72,10 +72,14 @@ Modules.Agenda = {
         const isMentor = Auth.can('mentor');
 
         this._allProfessores = [];
+        this._allAlunos = [];
         if (isAdmin) {
-            const { data: profsFiltro } = await supabase
-                .from('usuarios').select('id,nome').eq('role','professor').eq('ativo',true).order('nome');
+            const [{ data: profsFiltro }, { data: alunosFiltro }] = await Promise.all([
+                supabase.from('usuarios').select('id,nome').eq('role','professor').eq('ativo',true).order('nome'),
+                supabase.from('usuarios').select('id,nome').eq('role','aluno').eq('ativo',true).order('nome')
+            ]);
             this._allProfessores = profsFiltro || [];
+            this._allAlunos = alunosFiltro || [];
         }
 
         renderContent(`
@@ -108,28 +112,9 @@ Modules.Agenda = {
                         </select>
                         <input type="date" class="input" id="filter-data-agenda" onchange="Modules.Agenda._applyFilter()" style="max-width:160px;" />
                         ${isAdmin ? `
-                            <div class="prof-filter-wrap" id="prof-filter-wrap">
-                                <button type="button" class="btn btn-ghost btn-sm" id="btn-prof-filter" onclick="Modules.Agenda._toggleProfFilter()">
-                                    👤 Professores<span id="prof-filter-count"></span>
-                                </button>
-                                <div class="prof-filter-popover" id="prof-filter-popover" style="display:none;">
-                                    <div class="prof-filter-actions">
-                                        <button type="button" class="btn btn-ghost btn-sm" onclick="Modules.Agenda._profFilterSelectAll()">Selecionar todos</button>
-                                        <button type="button" class="btn btn-ghost btn-sm" onclick="Modules.Agenda._profFilterClear()">Limpar</button>
-                                    </div>
-                                    <div class="prof-filter-list" id="prof-filter-list">
-                                        ${this._allProfessores.length
-                                            ? this._allProfessores.map(p => `
-                                                <label class="check-item">
-                                                    <input type="checkbox" value="${p.id}" onchange="Modules.Agenda._profFilterToggle('${p.id}', this.checked)" />
-                                                    ${escapeHtml(p.nome)}
-                                                </label>
-                                            `).join('')
-                                            : `<span class="text-muted small">Nenhum professor cadastrado</span>`
-                                        }
-                                    </div>
-                                </div>
-                            </div>
+                            <button type="button" class="btn btn-ghost btn-sm" id="btn-agenda-filtros" onclick="Modules.Agenda.openFiltrosModal()">
+                                🔍 Filtros<span id="agenda-filtros-count"></span>
+                            </button>
                         ` : ''}
                         <button class="btn btn-ghost btn-sm" onclick="Modules.Agenda._clearFilters()">Limpar</button>
                     </div>
@@ -370,6 +355,81 @@ Modules.Agenda = {
                     </div>
                 </div>
             </div>
+
+            <!-- MODAL FILTROS DA AGENDA (admin) -->
+            <div class="modal-overlay" id="modal-agenda-filtros">
+                <div class="modal-box">
+                    <div class="modal-header">
+                        <h3>Filtros da Agenda</h3>
+                        <button class="modal-close" onclick="closeModal('modal-agenda-filtros')">×</button>
+                    </div>
+                    <div class="modal-body" style="gap:20px;">
+                        <div>
+                            <p class="form-section-title">Categoria</p>
+                            <div class="check-grid" id="cat-filter-list" style="grid-template-columns:1fr;">
+                                <label class="check-item">
+                                    <input type="checkbox" value="aula" onchange="Modules.Agenda._catFilterToggle('aula', this.checked)" />
+                                    📘 Aula
+                                </label>
+                                <label class="check-item">
+                                    <input type="checkbox" value="mentoria" onchange="Modules.Agenda._catFilterToggle('mentoria', this.checked)" />
+                                    🎯 Mentoria
+                                </label>
+                                <label class="check-item">
+                                    <input type="checkbox" value="consulta" onchange="Modules.Agenda._catFilterToggle('consulta', this.checked)" />
+                                    🧠 Consulta Psicopedagógica
+                                </label>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                                <p class="form-section-title" style="margin-bottom:0;">Professores</p>
+                                <div style="display:flex;gap:8px;">
+                                    <button type="button" class="btn btn-ghost btn-xs" onclick="Modules.Agenda._profFilterSelectAll()">Selecionar todos</button>
+                                    <button type="button" class="btn btn-ghost btn-xs" onclick="Modules.Agenda._profFilterClear()">Limpar</button>
+                                </div>
+                            </div>
+                            <div class="prof-filter-list" id="prof-filter-list">
+                                ${this._allProfessores.length
+                                    ? this._allProfessores.map(p => `
+                                        <label class="check-item">
+                                            <input type="checkbox" value="${p.id}" onchange="Modules.Agenda._profFilterToggle('${p.id}', this.checked)" />
+                                            ${escapeHtml(p.nome)}
+                                        </label>
+                                    `).join('')
+                                    : `<span class="text-muted small">Nenhum professor cadastrado</span>`
+                                }
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                                <p class="form-section-title" style="margin-bottom:0;">Alunos</p>
+                                <div style="display:flex;gap:8px;">
+                                    <button type="button" class="btn btn-ghost btn-xs" onclick="Modules.Agenda._alunoFilterSelectAll()">Selecionar todos</button>
+                                    <button type="button" class="btn btn-ghost btn-xs" onclick="Modules.Agenda._alunoFilterClear()">Limpar</button>
+                                </div>
+                            </div>
+                            <div class="prof-filter-list" id="aluno-filter-list">
+                                ${this._allAlunos.length
+                                    ? this._allAlunos.map(a => `
+                                        <label class="check-item">
+                                            <input type="checkbox" value="${a.id}" onchange="Modules.Agenda._alunoFilterToggle('${a.id}', this.checked)" />
+                                            ${escapeHtml(a.nome)}
+                                        </label>
+                                    `).join('')
+                                    : `<span class="text-muted small">Nenhum aluno cadastrado</span>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="Modules.Agenda._clearFilters()">Limpar filtros</button>
+                        <button class="btn btn-primary" onclick="closeModal('modal-agenda-filtros')">Fechar</button>
+                    </div>
+                </div>
+            </div>
         `);
 
         document.getElementById('ag-professor')?.addEventListener('change', async (e) => {
@@ -381,18 +441,6 @@ Modules.Agenda = {
             if (meetInput && pi?.link_meet) meetInput.value = pi.link_meet;
         });
 
-        if (Modules.Agenda._outsideClickHandler) {
-            document.removeEventListener('click', Modules.Agenda._outsideClickHandler);
-        }
-        Modules.Agenda._outsideClickHandler = function(e) {
-            const wrap = document.getElementById('prof-filter-wrap');
-            const pop  = document.getElementById('prof-filter-popover');
-            if (wrap && pop && pop.style.display !== 'none' && !wrap.contains(e.target)) {
-                pop.style.display = 'none';
-            }
-        };
-        document.addEventListener('click', Modules.Agenda._outsideClickHandler);
-
         this._updateUI();
         await this.loadList();
     },
@@ -401,7 +449,12 @@ Modules.Agenda = {
     _setTab(tab) {
         this._tab = tab;
         this._page = 1;
-        this._filters = { status: '', data: '', professorIds: this._filters.professorIds || [] };
+        this._filters = {
+            status: '', data: '',
+            professorIds: this._filters.professorIds || [],
+            alunoIds: this._filters.alunoIds || [],
+            categorias: this._filters.categorias || []
+        };
 
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById('tab-btn-' + tab)?.classList.add('active');
@@ -456,19 +509,38 @@ Modules.Agenda = {
         const dataEl   = document.getElementById('filter-data-agenda');
         if (statusEl) statusEl.value = '';
         if (dataEl)   dataEl.value   = '';
-        this._filters = { status: '', data: '', professorIds: [] };
+        this._filters = { status: '', data: '', professorIds: [], alunoIds: [], categorias: [] };
         document.querySelectorAll('#prof-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
-        this._updateProfFilterCount();
+        document.querySelectorAll('#aluno-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+        document.querySelectorAll('#cat-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+        this._updateFiltrosCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    // ── modal de filtros (admin) ────────────────────────────────
+    openFiltrosModal() {
+        openModal('modal-agenda-filtros');
+    },
+
+    _categoriaAtiva(cat) {
+        const cats = this._filters.categorias || [];
+        return cats.length === 0 || cats.includes(cat);
+    },
+
+    _catFilterToggle(cat, checked) {
+        const cats = this._filters.categorias || [];
+        if (checked) {
+            if (!cats.includes(cat)) cats.push(cat);
+        } else {
+            this._filters.categorias = cats.filter(c => c !== cat);
+        }
+        this._updateFiltrosCount();
         this._page = 1;
         this.loadList();
     },
 
     // ── filtro de professores (admin) ──────────────────────────
-    _toggleProfFilter() {
-        const pop = document.getElementById('prof-filter-popover');
-        if (pop) pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
-    },
-
     _profFilterToggle(profId, checked) {
         const ids = this._filters.professorIds || [];
         if (checked) {
@@ -476,7 +548,7 @@ Modules.Agenda = {
         } else {
             this._filters.professorIds = ids.filter(id => id !== profId);
         }
-        this._updateProfFilterCount();
+        this._updateFiltrosCount();
         this._page = 1;
         this.loadList();
     },
@@ -484,7 +556,7 @@ Modules.Agenda = {
     _profFilterSelectAll() {
         this._filters.professorIds = (this._allProfessores || []).map(p => p.id);
         document.querySelectorAll('#prof-filter-list input[type="checkbox"]').forEach(cb => cb.checked = true);
-        this._updateProfFilterCount();
+        this._updateFiltrosCount();
         this._page = 1;
         this.loadList();
     },
@@ -492,14 +564,45 @@ Modules.Agenda = {
     _profFilterClear() {
         this._filters.professorIds = [];
         document.querySelectorAll('#prof-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
-        this._updateProfFilterCount();
+        this._updateFiltrosCount();
         this._page = 1;
         this.loadList();
     },
 
-    _updateProfFilterCount() {
-        const count = (this._filters.professorIds || []).length;
-        const el = document.getElementById('prof-filter-count');
+    // ── filtro de alunos (admin) ────────────────────────────────
+    _alunoFilterToggle(alunoId, checked) {
+        const ids = this._filters.alunoIds || [];
+        if (checked) {
+            if (!ids.includes(alunoId)) ids.push(alunoId);
+        } else {
+            this._filters.alunoIds = ids.filter(id => id !== alunoId);
+        }
+        this._updateFiltrosCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    _alunoFilterSelectAll() {
+        this._filters.alunoIds = (this._allAlunos || []).map(a => a.id);
+        document.querySelectorAll('#aluno-filter-list input[type="checkbox"]').forEach(cb => cb.checked = true);
+        this._updateFiltrosCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    _alunoFilterClear() {
+        this._filters.alunoIds = [];
+        document.querySelectorAll('#aluno-filter-list input[type="checkbox"]').forEach(cb => cb.checked = false);
+        this._updateFiltrosCount();
+        this._page = 1;
+        this.loadList();
+    },
+
+    _updateFiltrosCount() {
+        const count = (this._filters.professorIds || []).length
+            + (this._filters.alunoIds || []).length
+            + (this._filters.categorias || []).length;
+        const el = document.getElementById('agenda-filtros-count');
         if (el) el.textContent = count > 0 ? ` (${count})` : '';
     },
 
@@ -667,22 +770,33 @@ Modules.Agenda = {
         const startISO  = this._isoDate(weekDates[0]);
         const endISO    = this._isoDate(weekDates[6]);
 
-        let query = supabase
-            .from('v_agenda_completa')
-            .select('*')
-            .gte('data', startISO)
-            .lte('data', endISO)
-            .eq('status', 'agendada')
-            .order('horario', { ascending: true });
+        const showAula     = role !== 'admin' || this._categoriaAtiva('aula');
+        const showConsulta = role !== 'admin' || this._categoriaAtiva('consulta');
+        const showMentoria = role !== 'admin' || this._categoriaAtiva('mentoria');
 
-        if (role === 'professor') query = query.eq('professor_id', uid);
-        if (role === 'aluno')     query = query.eq('aluno_id', uid);
-        if (role === 'admin' && this._filters.professorIds?.length) {
-            query = query.in('professor_id', this._filters.professorIds);
+        let query = Promise.resolve({ data: [] });
+        if (showAula) {
+            let q = supabase
+                .from('v_agenda_completa')
+                .select('*')
+                .gte('data', startISO)
+                .lte('data', endISO)
+                .eq('status', 'agendada')
+                .order('horario', { ascending: true });
+
+            if (role === 'professor') q = q.eq('professor_id', uid);
+            if (role === 'aluno')     q = q.eq('aluno_id', uid);
+            if (role === 'admin' && this._filters.professorIds?.length) {
+                q = q.in('professor_id', this._filters.professorIds);
+            }
+            if (role === 'admin' && this._filters.alunoIds?.length) {
+                q = q.in('aluno_id', this._filters.alunoIds);
+            }
+            query = q;
         }
 
-        // Admin e Aluno: também carrega consultas psicopedagógicas agendadas
-        const needsPsicoQuery = role === 'admin' || role === 'aluno';
+        // Admin (se categoria ativa) e Aluno: também carrega consultas psicopedagógicas agendadas
+        const needsPsicoQuery = (role === 'admin' && showConsulta) || role === 'aluno';
         let psicoQ = needsPsicoQuery
             ? supabase.from('agenda_psico')
                 .select(`id, data, horario, status, observacoes, link_meet,
@@ -691,11 +805,13 @@ Modules.Agenda = {
                 .gte('data', startISO).lte('data', endISO).eq('status', 'agendada')
                 .order('horario')
             : Promise.resolve({ data: [] });
-        if (role === 'aluno') psicoQ = psicoQ.eq('aluno_id', uid);
+        if (needsPsicoQuery && role === 'aluno') psicoQ = psicoQ.eq('aluno_id', uid);
+        if (needsPsicoQuery && role === 'admin' && this._filters.alunoIds?.length) psicoQ = psicoQ.in('aluno_id', this._filters.alunoIds);
         const psicoQuery = psicoQ;
 
-        // Admin e Aluno: também carrega mentorias agendadas
-        let mentoriaQ = needsPsicoQuery
+        // Admin (se categoria ativa) e Aluno: também carrega mentorias agendadas
+        const needsMentoriaQuery = (role === 'admin' && showMentoria) || role === 'aluno';
+        let mentoriaQ = needsMentoriaQuery
             ? supabase.from('agenda_mentoria')
                 .select(`id, data, horario, status, observacoes, link_meet,
                     aluno:usuarios!agenda_mentoria_aluno_id_fkey(nome),
@@ -703,7 +819,8 @@ Modules.Agenda = {
                 .gte('data', startISO).lte('data', endISO).eq('status', 'agendada')
                 .order('horario')
             : Promise.resolve({ data: [] });
-        if (role === 'aluno') mentoriaQ = mentoriaQ.eq('aluno_id', uid);
+        if (needsMentoriaQuery && role === 'aluno') mentoriaQ = mentoriaQ.eq('aluno_id', uid);
+        if (needsMentoriaQuery && role === 'admin' && this._filters.alunoIds?.length) mentoriaQ = mentoriaQ.in('aluno_id', this._filters.alunoIds);
         const mentoriaQuery = mentoriaQ;
 
         const [{ data, error }, { data: psicoData }, { data: mentoriaData }] = await Promise.all([query, psicoQuery, mentoriaQuery]);
@@ -804,45 +921,58 @@ Modules.Agenda = {
 
     // ── VISUALIZAÇÃO LISTA ─────────────────────────────────────
     async _loadListView(container, uid, role, isHistorico) {
-        let query = supabase
-            .from('v_agenda_completa')
-            .select('*', { count: 'exact' });
+        const showAula     = role !== 'admin' || this._categoriaAtiva('aula');
+        const showConsulta = role !== 'admin' || this._categoriaAtiva('consulta');
+        const showMentoria = role !== 'admin' || this._categoriaAtiva('mentoria');
 
-        if (role === 'professor') query = query.eq('professor_id', uid);
-        if (role === 'aluno')     query = query.eq('aluno_id', uid);
-        if (role === 'admin' && this._filters.professorIds?.length) {
-            query = query.in('professor_id', this._filters.professorIds);
+        let query = Promise.resolve({ data: [], count: 0 });
+        if (showAula) {
+            let q = supabase
+                .from('v_agenda_completa')
+                .select('*', { count: 'exact' });
+
+            if (role === 'professor') q = q.eq('professor_id', uid);
+            if (role === 'aluno')     q = q.eq('aluno_id', uid);
+            if (role === 'admin' && this._filters.professorIds?.length) {
+                q = q.in('professor_id', this._filters.professorIds);
+            }
+            if (role === 'admin' && this._filters.alunoIds?.length) {
+                q = q.in('aluno_id', this._filters.alunoIds);
+            }
+
+            if (isHistorico) {
+                q = q
+                    .or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`)
+                    .order('data', { ascending: false })
+                    .order('horario', { ascending: false });
+                if (this._filters.status) q = q.eq('status', this._filters.status);
+            } else {
+                q = q
+                    .eq('status', 'agendada')
+                    .gte('data', todayISO())
+                    .order('data', { ascending: true })
+                    .order('horario', { ascending: true });
+            }
+
+            if (this._filters.data) q = q.eq('data', this._filters.data);
+
+            const from = (this._page - 1) * APP_CONFIG.paginationSize;
+            q = q.range(from, from + APP_CONFIG.paginationSize - 1);
+            query = q;
         }
 
-        if (isHistorico) {
-            query = query
-                .or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`)
-                .order('data', { ascending: false })
-                .order('horario', { ascending: false });
-            if (this._filters.status) query = query.eq('status', this._filters.status);
-        } else {
-            query = query
-                .eq('status', 'agendada')
-                .gte('data', todayISO())
-                .order('data', { ascending: true })
-                .order('horario', { ascending: true });
-        }
-
-        if (this._filters.data) query = query.eq('data', this._filters.data);
-
-        const from = (this._page - 1) * APP_CONFIG.paginationSize;
-        query = query.range(from, from + APP_CONFIG.paginationSize - 1);
-
-        // Aluno: carregar também consultas psicopedagógicas e mentorias em paralelo
+        // Aluno (sempre) e Admin (se categoria ativa): carregar também consultas psicopedagógicas e mentorias em paralelo
         let psicoPromise = Promise.resolve({ data: [] });
         let mentoriaPromise = Promise.resolve({ data: [] });
-        if (role === 'aluno') {
+        if (role === 'aluno' || (role === 'admin' && showConsulta)) {
             let pq = supabase.from('agenda_psico')
                 .select(`id, data, horario, status, link_meet, observacoes,
+                    aluno:usuarios!agenda_psico_aluno_id_fkey(nome),
                     psico:usuarios!agenda_psico_psico_id_fkey(nome)`)
-                .eq('aluno_id', uid)
                 .order('data', { ascending: !isHistorico })
                 .order('horario');
+            if (role === 'aluno') pq = pq.eq('aluno_id', uid);
+            if (role === 'admin' && this._filters.alunoIds?.length) pq = pq.in('aluno_id', this._filters.alunoIds);
             if (isHistorico) {
                 pq = pq.or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`);
                 if (this._filters.status) pq = pq.eq('status', this._filters.status);
@@ -851,13 +981,17 @@ Modules.Agenda = {
             }
             if (this._filters.data) pq = pq.eq('data', this._filters.data);
             psicoPromise = pq.limit(20);
+        }
 
+        if (role === 'aluno' || (role === 'admin' && showMentoria)) {
             let mq = supabase.from('agenda_mentoria')
                 .select(`id, data, horario, status, link_meet, observacoes,
+                    aluno:usuarios!agenda_mentoria_aluno_id_fkey(nome),
                     mentor:usuarios!agenda_mentoria_mentor_id_fkey(nome)`)
-                .eq('aluno_id', uid)
                 .order('data', { ascending: !isHistorico })
                 .order('horario');
+            if (role === 'aluno') mq = mq.eq('aluno_id', uid);
+            if (role === 'admin' && this._filters.alunoIds?.length) mq = mq.in('aluno_id', this._filters.alunoIds);
             if (isHistorico) {
                 mq = mq.or(`data.lt.${todayISO()},status.in.(realizada,cancelada)`);
                 if (this._filters.status) mq = mq.eq('status', this._filters.status);
@@ -933,7 +1067,7 @@ Modules.Agenda = {
                                                     <div class="agenda-aula-time">${fmt.time(a.horario)}</div>
                                                     <div class="agenda-aula-info">
                                                         <div class="agenda-aula-top">
-                                                            <span class="agenda-aula-aluno">🧠 Consulta Psicopedagógica</span>
+                                                            <span class="agenda-aula-aluno">🧠 Consulta Psicopedagógica${isAdmin ? ' — ' + escapeHtml(a.aluno?.nome || '—') : ''}</span>
                                                             <span class="agenda-aula-prof">com ${escapeHtml(a.psico?.nome || '—')}</span>
                                                             ${badge(_ST2[a.status] || a.status, _SC2[a.status] || 'badge-secondary')}
                                                         </div>
@@ -954,7 +1088,7 @@ Modules.Agenda = {
                                                     <div class="agenda-aula-time">${fmt.time(a.horario)}</div>
                                                     <div class="agenda-aula-info">
                                                         <div class="agenda-aula-top">
-                                                            <span class="agenda-aula-aluno">🎯 Mentoria</span>
+                                                            <span class="agenda-aula-aluno">🎯 Mentoria${isAdmin ? ' — ' + escapeHtml(a.aluno?.nome || '—') : ''}</span>
                                                             <span class="agenda-aula-prof">com ${escapeHtml(a.mentor?.nome || '—')}</span>
                                                             ${badge(_ST3[a.status] || a.status, _SC3[a.status] || 'badge-secondary')}
                                                         </div>
@@ -992,6 +1126,9 @@ Modules.Agenda = {
                                                         : ''}
                                                     ${a.relatorio_id
                                                         ? `<button class="btn btn-ghost btn-sm" onclick="Modules.Agenda._verRelatorio('${a.relatorio_id}')">Ver Rel.</button>`
+                                                        : ''}
+                                                    ${isAdmin && a.status === 'agendada'
+                                                        ? `<button class="btn btn-ghost btn-sm" onclick="Modules.Agenda.openEdit('${a.id}')">Editar</button>`
                                                         : ''}
                                                     ${isAdmin && a.status === 'agendada'
                                                         ? `<button class="btn btn-ghost btn-sm text-danger" onclick="Modules.Agenda.openCancelar('${a.id}')">Cancelar</button>`
@@ -1075,6 +1212,7 @@ Modules.Agenda = {
             footer.innerHTML += `<button class="btn btn-ghost" onclick="Modules.Agenda._verRelatorio('${a.relatorio_id}')">Ver Relatório</button>`;
         }
         if (isAdmin && a.status === 'agendada') {
+            footer.innerHTML += `<button class="btn btn-secondary btn-sm" onclick="closeModal('modal-aula-detalhes');Modules.Agenda.openEdit('${a.id}')">Editar</button>`;
             footer.innerHTML += `<button class="btn btn-danger btn-sm" onclick="closeModal('modal-aula-detalhes');Modules.Agenda.openCancelar('${a.id}')">Cancelar Aula</button>`;
         }
 
@@ -1104,6 +1242,7 @@ Modules.Agenda = {
     // ── CRIAR AULA ─────────────────────────────────────────────
     async openCreate() {
         document.getElementById('modal-agenda-title').textContent = 'Agendar Aula';
+        document.getElementById('btn-save-agenda').textContent = 'Agendar';
         document.getElementById('ag-id').value = '';
         document.getElementById('ag-data').value = '';
         document.getElementById('ag-data').min = todayISO();
@@ -1132,6 +1271,41 @@ Modules.Agenda = {
         await this.openCreate();
         const dataInput = document.getElementById('ag-data');
         if (dataInput) dataInput.value = dateISO;
+    },
+
+    // ── EDITAR AULA ────────────────────────────────────────────
+    async openEdit(id) {
+        const { data: aula, error } = await supabase.from('agenda_meet').select('*').eq('id', id).single();
+        if (error || !aula) return showToast('Aula não encontrada', 'error');
+
+        document.getElementById('modal-agenda-title').textContent = 'Editar Aula';
+        document.getElementById('btn-save-agenda').textContent = 'Salvar Alterações';
+        document.getElementById('ag-id').value = aula.id;
+        document.getElementById('ag-data').min = todayISO();
+        document.getElementById('ag-data').value = aula.data;
+        document.getElementById('ag-horario').value = (aula.horario || '').substring(0, 5);
+        document.getElementById('ag-conteudo').value = aula.conteudo || '';
+        document.getElementById('ag-meet').value = aula.link_meet || '';
+        document.getElementById('ag-disponibilidade-info').style.display = 'none';
+
+        const [{ data: alunos }, { data: profs }] = await Promise.all([
+            supabase.from('usuarios').select('id,nome').eq('role','aluno').eq('ativo',true).order('nome'),
+            supabase.from('usuarios').select('id,nome').eq('role','professor').eq('ativo',true).order('nome')
+        ]);
+
+        document.getElementById('ag-aluno').innerHTML =
+            `<option value="">Selecionar aluno...</option>` +
+            (alunos?.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join('') || '');
+        document.getElementById('ag-professor').innerHTML =
+            `<option value="">Selecionar professor...</option>` +
+            (profs?.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('') || '');
+
+        document.getElementById('ag-aluno').value = aula.aluno_id;
+        document.getElementById('ag-professor').value = aula.professor_id;
+
+        if (aula.professor_id) this._showDisponibilidade(aula.professor_id);
+
+        openModal('modal-agenda');
     },
 
     async _showDisponibilidade(professorId) {
@@ -1591,6 +1765,20 @@ Modules.Agenda = {
         await auditLog('AULA_CANCELADA', 'agenda_meet', id, { status: 'cancelada' });
         showToast('Aula cancelada', 'success');
         closeModal('modal-cancelar');
+        this._notificarCancelamento(id).catch(console.warn);
         await this.loadList();
+    },
+
+    async _notificarCancelamento(agendaId) {
+        if (!agendaId) return;
+        try {
+            const { error } = await supabase.functions.invoke('notify-aula-cancelada', {
+                body: { agendaId }
+            });
+            if (error) console.warn('Notificação de cancelamento falhou:', error.message);
+            else       console.log('WhatsApp de cancelamento enviado ao professor');
+        } catch (e) {
+            console.warn('Notificação de cancelamento falhou:', e?.message || e);
+        }
     }
 };

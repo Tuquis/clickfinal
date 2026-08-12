@@ -206,12 +206,80 @@ _Click do Saber_
 ---
 
 ### 14. `relatorio_pdf_documento`
+**Idioma aprovado: English (en)** — diferente dos demais (pt_BR). O código já envia com `idioma: 'en'` fixo para este template.
 **Cabeçalho:** Documento (envie um PDF qualquer de exemplo na criação).
 **Corpo:**
 ```
 📄 Relatório completo em anexo.
 ```
 Sem variáveis no corpo.
+
+---
+
+## ⏳ Templates novos, ainda NÃO aprovados (pendentes de criação/aprovação)
+
+**Importante:** estes são templates **NOVOS**, com nome diferente dos que já estão aprovados e em uso. Crie-os como itens adicionais no WhatsApp Manager — **não edite** `aula_agendada_professor`, `lembrete_aula_30min_professor` nem `relatorio_pdf_documento`, que continuam funcionando normalmente (inclusive o botão "Enviar para Responsável") enquanto estes novos não são aprovados. Assim que a Meta aprovar cada um abaixo, me avise que eu troco o código para usá-lo — sem nenhuma interrupção no meio do caminho.
+
+### 15. `aula_agendada_professor_v2`
+Substitui `aula_agendada_professor` no código quando aprovado.
+**Corpo:**
+```
+📅 Nova aula agendada, {{1}}!
+
+👤 Aluno: {{2}}
+📝 Assunto: {{3}}
+🗓 Data: {{4}}
+⏰ Horário: {{5}}
+
+🔗 Link da aula: {{6}}
+
+Acesse a plataforma para mais detalhes.
+```
+**Exemplos para preencher:** {{1}} João, {{2}} Maria Silva, {{3}} Frações e números decimais, {{4}} Segunda-feira, 4 de agosto, {{5}} 14:00, {{6}} https://meet.google.com/abc-defg-hij
+
+---
+
+### 16. `lembrete_aula_30min_professor_v2`
+Substitui `lembrete_aula_30min_professor` no código quando aprovado.
+**Corpo:**
+```
+📋 Lembrete de aula em 30 minutos (às {{1}})!
+
+👤 Aluno: {{2}}
+📝 Assunto: {{3}}
+
+🔗 Link da aula: {{4}}
+
+_Click do Saber_
+```
+**Exemplos:** {{1}} 14:00, {{2}} Pedro Souza, {{3}} Frações e números decimais, {{4}} https://meet.google.com/abc-defg-hij
+
+---
+
+### 17. `relatorio_pdf_documento_v2`
+Substitui `relatorio_pdf_documento` no código quando aprovado (envio automático pro admin + botão "Enviar para Responsável"). **Idioma: English (en)** — igual ao atual.
+**Cabeçalho:** Documento (envie um PDF qualquer de exemplo na criação).
+**Corpo:**
+```
+Segue, relatório pós aula! 📄💜
+```
+Sem variáveis no corpo.
+
+---
+
+### 18. `aula_cancelada_professor`
+Template **novo** (funcionalidade nova, não existia antes) — já implementado no código (`notify-aula-cancelada`), só falta criar e aprovar na Meta. Idioma: Português (BR), igual aos demais.
+**Corpo:**
+```
+❌ Aula cancelada, {{1}}!
+
+👤 Aluno: {{2}}
+🗓 Data: {{3}}
+⏰ Horário: {{4}}
+
+Acesse a plataforma para mais detalhes.
+```
+**Exemplos para preencher:** {{1}} João, {{2}} Maria Silva, {{3}} Segunda-feira, 4 de agosto, {{4}} 14:00
 
 ---
 
@@ -232,7 +300,8 @@ Sem variáveis no corpo.
 | 11 | `nova_atividade_aluno` | Professor posta atividade nova | Aluno | trigger banco → `notify-nova-atividade` |
 | 12 | `resposta_atividade_professor` | Aluno responde atividade | Professor | trigger banco → `notify-resposta-atividade` |
 | 13 | `relatorio_pos_aula` | Relatório de aula criado (texto) | Admin (número fixo) | trigger banco → `notify-relatorio` |
-| 14 | `relatorio_pdf_documento` | Relatório de aula criado (PDF) | Admin (número fixo) | `relatorios.js` → `notify-relatorio` |
+| 14 | `relatorio_pdf_documento` | Relatório de aula criado (PDF, automático) **ou** clique em "Enviar para Responsável" na tela Ver Relatório | Admin (número fixo) automático; Responsável do aluno sob demanda | `relatorios.js` → `notify-relatorio` |
+| 18 | `aula_cancelada_professor` ⏳ *(pendente de aprovação)* | Aula cancelada pelo admin | Professor | `agenda.js` → `notify-aula-cancelada` |
 
 **Nota:** existe um 15º evento no inventário original — lembrete de aula 30 min antes **por e-mail** ao professor — que continua funcionando via EmailJS dentro do próprio `send-class-reminders`, sem depender de WhatsApp/template nenhum. Não precisa de template porque não é WhatsApp.
 

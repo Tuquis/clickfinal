@@ -166,12 +166,12 @@ function setLoading(selector, state) {
 
 function showPageLoader() {
     const loader = document.getElementById('page-loader');
-    if (loader) loader.style.display = 'flex';
+    if (loader) loader.classList.add('page-loader-active');
 }
 
 function hidePageLoader() {
     const loader = document.getElementById('page-loader');
-    if (loader) loader.style.display = 'none';
+    if (loader) loader.classList.remove('page-loader-active');
 }
 
 // ============================================================
@@ -179,7 +179,12 @@ function hidePageLoader() {
 // ============================================================
 function renderContent(html) {
     const main = document.getElementById('main-content');
-    if (main) main.innerHTML = html;
+    if (!main) return;
+    main.innerHTML = html;
+    // Reinicia a animação de entrada a cada troca de módulo
+    main.classList.remove('module-transition');
+    void main.offsetWidth;
+    main.classList.add('module-transition');
 }
 
 // ============================================================

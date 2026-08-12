@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS public.relatorios (
     camera_objecao          BOOLEAN,
     camera_objecao_detalhe  TEXT,
     disciplina_ministrada   TEXT,
+    enviado_responsavel_em  TIMESTAMPTZ,
     created_at              TIMESTAMPTZ DEFAULT NOW(),
     updated_at              TIMESTAMPTZ DEFAULT NOW()
 );
