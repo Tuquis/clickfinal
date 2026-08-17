@@ -15,7 +15,7 @@
 
 ---
 
-### 1. `aula_agendada_professor`
+### 1. `aula_agendada_professor` ⚠️ *(substituído por `aula_agendada_professor_v2` — ver item 15, já em uso)*
 **Corpo:**
 ```
 📅 Nova aula agendada, {{1}}!
@@ -205,23 +205,23 @@ _Click do Saber_
 
 ---
 
-### 14. `relatorio_pdf_documento`
-**Idioma aprovado: English (en)** — diferente dos demais (pt_BR). O código já envia com `idioma: 'en'` fixo para este template.
+### 14. `relatorio_pdf_documento` ⚠️ *(substituído por `relatorio_pdf_documento_v2` — ver item 17, já em uso)*
+**Idioma aprovado: English (en)** — diferente dos demais (pt_BR).
 **Cabeçalho:** Documento (envie um PDF qualquer de exemplo na criação).
 **Corpo:**
 ```
 📄 Relatório completo em anexo.
 ```
-Sem variáveis no corpo.
+Sem variáveis no corpo. Não é mais chamado pelo código — pode ficar parado no WhatsApp Manager sem problema, ou ser desativado se preferir.
 
 ---
 
 ## ⏳ Templates novos, ainda NÃO aprovados (pendentes de criação/aprovação)
 
-**Importante:** estes são templates **NOVOS**, com nome diferente dos que já estão aprovados e em uso. Crie-os como itens adicionais no WhatsApp Manager — **não edite** `aula_agendada_professor`, `lembrete_aula_30min_professor` nem `relatorio_pdf_documento`, que continuam funcionando normalmente (inclusive o botão "Enviar para Responsável") enquanto estes novos não são aprovados. Assim que a Meta aprovar cada um abaixo, me avise que eu troco o código para usá-lo — sem nenhuma interrupção no meio do caminho.
+**Importante:** estes são templates **NOVOS**, com nome diferente dos que já estão aprovados e em uso. Crie-os como itens adicionais no WhatsApp Manager — **não edite** `lembrete_aula_30min_professor`, que continua funcionando normalmente enquanto o item 16 não é aprovado. Assim que a Meta aprovar, me avise que eu troco o código para usá-lo — sem nenhuma interrupção no meio do caminho. (`aula_agendada_professor_v2` e `relatorio_pdf_documento_v2` já foram aprovados e o código já foi trocado — ver itens 15 e 17.)
 
-### 15. `aula_agendada_professor_v2`
-Substitui `aula_agendada_professor` no código quando aprovado.
+### 15. `aula_agendada_professor_v2` ✅ **APROVADO E JÁ EM USO**
+Substituiu `aula_agendada_professor` no código (`send-agendamento-email`). Idioma aprovado: **English (en)** — o código já envia com `idioma: 'en'`.
 **Corpo:**
 ```
 📅 Nova aula agendada, {{1}}!
@@ -256,9 +256,9 @@ _Click do Saber_
 
 ---
 
-### 17. `relatorio_pdf_documento_v2`
-Substitui `relatorio_pdf_documento` no código quando aprovado (envio automático pro admin + botão "Enviar para Responsável"). **Idioma: English (en)** — igual ao atual.
-**Cabeçalho:** Documento (envie um PDF qualquer de exemplo na criação).
+### 17. `relatorio_pdf_documento_v2` ✅ **APROVADO E JÁ EM USO**
+Substituiu `relatorio_pdf_documento` no código (`notify-relatorio`) — envio automático pro admin **e** o botão "Enviar para Responsável" na tela Ver Relatório já usam este template. Idioma: English (en).
+**Cabeçalho:** Documento.
 **Corpo:**
 ```
 Segue, relatório pós aula! 📄💜
@@ -287,7 +287,7 @@ Acesse a plataforma para mais detalhes.
 
 | # | Template | Evento / gatilho | Quem recebe | Onde é chamado no código |
 |---|----------|-------------------|--------------|---------------------------|
-| 1 | `aula_agendada_professor` | Aula agendada pelo admin | Professor | `agenda.js` → `send-agendamento-email` |
+| 1 | `aula_agendada_professor_v2` | Aula agendada pelo admin | Professor | `agenda.js` → `send-agendamento-email` |
 | 2 | `consulta_psico_agendada` | Consulta psicopedagógica agendada | Psicopedagoga | `agenda.js` → `send-agendamento-psico` |
 | 3 | `lembrete_aula_25min_aluno` | 25 min antes da aula | Aluno | cron → `send-class-reminders` |
 | 4 | `lembrete_aula_10min_aluno` | 10 min antes da aula | Aluno | cron → `send-class-reminders` |
@@ -300,7 +300,7 @@ Acesse a plataforma para mais detalhes.
 | 11 | `nova_atividade_aluno` | Professor posta atividade nova | Aluno | trigger banco → `notify-nova-atividade` |
 | 12 | `resposta_atividade_professor` | Aluno responde atividade | Professor | trigger banco → `notify-resposta-atividade` |
 | 13 | `relatorio_pos_aula` | Relatório de aula criado (texto) | Admin (número fixo) | trigger banco → `notify-relatorio` |
-| 14 | `relatorio_pdf_documento` | Relatório de aula criado (PDF, automático) **ou** clique em "Enviar para Responsável" na tela Ver Relatório | Admin (número fixo) automático; Responsável do aluno sob demanda | `relatorios.js` → `notify-relatorio` |
+| 17 | `relatorio_pdf_documento_v2` | Relatório de aula criado (PDF, automático) **ou** clique em "Enviar para Responsável" na tela Ver Relatório | Admin (número fixo) automático; Responsável do aluno sob demanda | `relatorios.js` → `notify-relatorio` |
 | 18 | `aula_cancelada_professor` ⏳ *(pendente de aprovação)* | Aula cancelada pelo admin | Professor | `agenda.js` → `notify-aula-cancelada` |
 
 **Nota:** existe um 15º evento no inventário original — lembrete de aula 30 min antes **por e-mail** ao professor — que continua funcionando via EmailJS dentro do próprio `send-class-reminders`, sem depender de WhatsApp/template nenhum. Não precisa de template porque não é WhatsApp.

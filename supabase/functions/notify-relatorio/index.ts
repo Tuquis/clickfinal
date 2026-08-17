@@ -31,14 +31,15 @@ async function sendText(params: string[]) {
   }
 }
 
-async function sendPDF(telefone: string, b64: string, filename: string) {
+async function sendPDF(telefone: string, b64: string, filename: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    // Template relatorio_pdf_documento foi aprovado na Meta em inglês (en)
-    await enviarDocumentoTemplateBase64(telefone, 'relatorio_pdf_documento', b64, filename, 'application/pdf', 'en');
-    return true;
+    // Template relatorio_pdf_documento_v2 foi aprovado na Meta em inglês (en)
+    await enviarDocumentoTemplateBase64(telefone, 'relatorio_pdf_documento_v2', b64, filename, 'application/pdf', 'en');
+    return { ok: true };
   } catch (e) {
     console.error('Meta API error (pdf):', e);
-    return false;
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
   }
 }
 
@@ -59,12 +60,12 @@ serve(async (req) => {
         : NUMERO_ADMIN;
 
       if (!destino) {
-        return new Response(JSON.stringify({ error: 'Telefone do responsável inválido' }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ ok: false, error: 'Telefone do responsável inválido' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
       }
 
-      const ok = await sendPDF(destino, body.pdfBase64, body.filename);
+      const result = await sendPDF(destino, body.pdfBase64, body.filename);
 
-      if (ok && body.telefoneResponsavel && body.relatorioId) {
+      if (result.ok && body.telefoneResponsavel && body.relatorioId) {
         const { error: updErr } = await supabase
           .from('relatorios')
           .update({ enviado_responsavel_em: new Date().toISOString() })
@@ -72,7 +73,7 @@ serve(async (req) => {
         if (updErr) console.error('Erro ao marcar relatório como enviado:', updErr);
       }
 
-      return new Response(JSON.stringify({ ok, tipo: 'pdf' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: result.ok, tipo: 'pdf', error: result.error }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
     }
 
     // ── Modo texto: chamado pelo trigger do banco ─────────────────

@@ -1135,13 +1135,16 @@ Modules.Relatorios = {
             var { data: fnData, error: fnErr } = await supabase.functions.invoke('notify-relatorio', {
                 body: { pdfBase64, filename, relatorioId: id, telefoneResponsavel: this._viewingTelefoneResp }
             });
-            if (fnErr || !fnData || !fnData.ok) throw new Error((fnErr && fnErr.message) || 'Falha ao enviar pelo WhatsApp');
+            if (fnErr || !fnData || !fnData.ok) {
+                var motivo = (fnData && fnData.error) || (fnErr && fnErr.message) || 'motivo desconhecido';
+                throw new Error('O relatório não pôde ser enviado pelo WhatsApp (' + motivo + '). Tente novamente em instantes ou confira o número do responsável.');
+            }
 
             this._viewingJaEnviado = true;
             this._updateBtnEnviarResponsavel();
             showToast('Relatório enviado ao responsável!', 'success');
         } catch (err) {
-            showToast(err.message || 'Erro ao enviar para o responsável', 'error');
+            showToast(err.message || 'O relatório não pôde ser enviado pelo WhatsApp. Tente novamente.', 'error', 7000);
         } finally {
             setLoading('#btn-enviar-responsavel', false);
         }

@@ -78,15 +78,16 @@ Deno.serve(async (req) => {
   const primeiroNome  = nomeProf.split(' ')[0]
 
   // Envia via API oficial (Meta)
+  // Template aula_agendada_professor_v2 foi aprovado na Meta em inglês (en)
   try {
-    await enviarTemplate(telefone, 'aula_agendada_professor', [
+    await enviarTemplate(telefone, 'aula_agendada_professor_v2', [
       primeiroNome,
       aula.aluno_nome || '—',
-      aula.disciplina || '—',
+      aula.conteudo || '—',
       dataFormatada,
       horario,
       aula.link_meet || 'Ainda não informado'
-    ])
+    ], 'en')
   } catch (e) {
     console.error('Meta API error:', e)
     return new Response(
