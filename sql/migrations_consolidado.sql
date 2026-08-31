@@ -144,6 +144,10 @@ CREATE TABLE IF NOT EXISTS public.relatorios (
     camera_objecao_detalhe  TEXT,
     disciplina_ministrada   TEXT,
     enviado_responsavel_em  TIMESTAMPTZ,
+    motivo_meta_nao_atingida      TEXT,
+    assunto_pendente               TEXT,
+    assunto_pendente_resolvido     BOOLEAN NOT NULL DEFAULT false,
+    assunto_pendente_resolvido_em  TIMESTAMPTZ,
     created_at              TIMESTAMPTZ DEFAULT NOW(),
     updated_at              TIMESTAMPTZ DEFAULT NOW()
 );
@@ -180,6 +184,8 @@ CREATE TABLE IF NOT EXISTS public.atividades (
     descricao    TEXT,
     arquivo_url  TEXT,
     prazo        DATE,
+    tipo_material TEXT NOT NULL DEFAULT 'lista_exercicios'
+        CHECK (tipo_material IN ('slide','lista_exercicios')),
     created_at   TIMESTAMPTZ DEFAULT NOW(),
     updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
@@ -271,8 +277,9 @@ CREATE TABLE IF NOT EXISTS public.respostas_atividades (
     arquivo_url  TEXT    NOT NULL,
     arquivo_nome TEXT,
     visualizado  BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at   TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(atividade_id, aluno_id)
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+    -- Sem UNIQUE(atividade_id, aluno_id): uma resposta pode ter várias fotos/arquivos,
+    -- cada um vira uma linha própria (removida em 2026-08-25 para suportar múltiplas fotos)
 );
 
 CREATE TABLE IF NOT EXISTS public.agenda_psico (
@@ -1156,6 +1163,47 @@ CREATE TRIGGER on_nova_mensagem_direta
 AFTER INSERT ON public.mensagens_diretas
 FOR EACH ROW
 EXECUTE FUNCTION public.fn_notify_chat_message();
+
+-- Trigger: notifica professor (e mentor) no WhatsApp quando aluno responde uma atividade
+-- Chama a Edge Function notify-resposta-atividade via net.http_post (pg_net)
+CREATE OR REPLACE FUNCTION public.fn_notify_resposta_atividade()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_ja_notificou BOOLEAN;
+BEGIN
+  -- Aluno pode enviar várias fotos numa mesma resposta (1 linha por arquivo).
+  -- Notifica só uma vez por leva de envios: se já existe outra resposta do
+  -- mesmo aluno pra mesma atividade nos últimos 60s, não dispara de novo.
+  SELECT EXISTS (
+    SELECT 1 FROM public.respostas_atividades
+    WHERE atividade_id = NEW.atividade_id
+      AND aluno_id     = NEW.aluno_id
+      AND id           != NEW.id
+      AND created_at   >= NEW.created_at - INTERVAL '60 seconds'
+  ) INTO v_ja_notificou;
+
+  IF v_ja_notificou THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM net.http_post(
+    url     := 'https://kverxbbwvmxcdiqwcijp.supabase.co/functions/v1/notify-resposta-atividade',
+    body    := jsonb_build_object('respostaId', NEW.id),
+    headers := '{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZXJ4YmJ3dm14Y2RpcXdjaWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MzYxMzUsImV4cCI6MjA5MzIxMjEzNX0.yZW-29JAIuJvZgsDO6gy8gmGswz4NgDTW1M0izGxZAI"}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_nova_resposta_atividade ON public.respostas_atividades;
+CREATE TRIGGER on_nova_resposta_atividade
+AFTER INSERT ON public.respostas_atividades
+FOR EACH ROW
+EXECUTE FUNCTION public.fn_notify_resposta_atividade();
 
 
 -- ══════════════════════════════════════════════════════════════

@@ -119,7 +119,7 @@ Modules.Relatorios = {
             .from('relatorios')
             .select(`
                 id, conteudo_ministrado, comportamento, compreensao,
-                recomendacoes, habilidades, created_at,
+                recomendacoes, habilidades, created_at, enviado_responsavel_em,
                 aluno:usuarios!relatorios_aluno_id_fkey(nome),
                 professor:usuarios!relatorios_professor_id_fkey(nome)
             `, { count: 'exact' })
@@ -164,7 +164,10 @@ Modules.Relatorios = {
                     ${data.map(function(r) { return `
                         <tr>
                             <td>${fmt.date(r.created_at.substring(0, 10))}</td>
-                            <td>${escapeHtml((r.aluno && r.aluno.nome) || '—')}</td>
+                            <td>
+                                ${escapeHtml((r.aluno && r.aluno.nome) || '—')}
+                                ${r.enviado_responsavel_em ? ' ' + badge('📤 Enviado', 'badge-success') : ''}
+                            </td>
                             ${!Auth.can('aluno') ? '<td>' + escapeHtml((r.professor && r.professor.nome) || '—') + '</td>' : ''}
                             <td>${badge(Modules.Relatorios._COMP_SHORT[r.comportamento]  || r.comportamento, Modules.Relatorios._badgeComp(r.comportamento))}</td>
                             <td>${badge(Modules.Relatorios._COMPR_SHORT[r.compreensao]   || r.compreensao,  Modules.Relatorios._badgeComp(r.compreensao))}</td>
@@ -349,6 +352,18 @@ Modules.Relatorios = {
                         <div class="radio-list" style="flex-direction:row;gap:20px">
                             <label class="radio-item"><input type="radio" name="rel-retomar" value="sim" /> Sim</label>
                             <label class="radio-item"><input type="radio" name="rel-retomar" value="nao" /> Não</label>
+                        </div>
+
+                        <div class="form-group" style="margin-top:14px">
+                            <label class="form-label">Por qual motivo a meta não foi totalmente atingida?</label>
+                            <textarea class="input textarea" id="rel-motivo-meta" rows="2"
+                                placeholder="Ex. O tempo não foi suficiente para ministrar todo o conteúdo"></textarea>
+                        </div>
+
+                        <div class="form-group" style="margin-top:10px">
+                            <label class="form-label">Qual assunto em específico ficou faltando ser ministrado?</label>
+                            <input type="text" class="input" id="rel-assunto-pendente"
+                                placeholder="Ex. Frações e números decimais" />
                         </div>
                     </div>
                 </div>
@@ -577,6 +592,14 @@ Modules.Relatorios = {
             ? (retomarEl ? retomarEl.value === 'sim' : null)
             : null;
 
+        var motivoMetaEl  = document.getElementById('rel-motivo-meta');
+        var motivo_meta_nao_atingida = (meta_atingida === 'parcialmente' || meta_atingida === 'nao') && motivoMetaEl
+            ? motivoMetaEl.value.trim() : '';
+
+        var assuntoPendEl = document.getElementById('rel-assunto-pendente');
+        var assunto_pendente = (meta_atingida === 'parcialmente' || meta_atingida === 'nao') && assuntoPendEl
+            ? assuntoPendEl.value.trim() : '';
+
         var interativEl   = document.querySelector('input[name="rel-interatividade"]:checked');
         var interatividade = interativEl ? interativEl.value : null;
 
@@ -621,6 +644,8 @@ Modules.Relatorios = {
                 // novos campos
                 meta_atingida:              meta_atingida,
                 retomar_conteudo:           retomar_conteudo,
+                motivo_meta_nao_atingida:   motivo_meta_nao_atingida || null,
+                assunto_pendente:           assunto_pendente || null,
                 interatividade:             interatividade,
                 ferramentas:                ferramentas.length ? ferramentas : null,
                 observacoes:                observacoes || null,
@@ -750,6 +775,13 @@ Modules.Relatorios = {
                     ${r.retomar_conteudo !== null && r.retomar_conteudo !== undefined ? `
                         <p style="margin-top:6px;font-size:.875rem;color:var(--color-text-muted)">
                             Necessidade de retomar: <strong>${r.retomar_conteudo ? 'Sim' : 'Não'}</strong>
+                        </p>` : ''}
+                    ${r.motivo_meta_nao_atingida ? `
+                        <p style="margin-top:6px;font-size:.875rem;"><strong>Motivo:</strong> ${escapeHtml(r.motivo_meta_nao_atingida)}</p>` : ''}
+                    ${r.assunto_pendente ? `
+                        <p style="margin-top:6px;font-size:.875rem;">
+                            <strong>Assunto pendente:</strong> ${escapeHtml(r.assunto_pendente)}
+                            ${r.assunto_pendente_resolvido ? badge('Retomado', 'badge-success') : badge('Pendente', 'badge-warning')}
                         </p>` : ''}
                 </div>` : ''}
 

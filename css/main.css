@@ -326,6 +326,67 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .stats-grid-2 { grid-template-columns: repeat(2, 1fr); }
 .stats-grid-3 { grid-template-columns: repeat(3, 1fr); }
 
+.insights-chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+@media (max-width: 900px) {
+    .insights-chart-grid { grid-template-columns: 1fr; }
+}
+
+/* Contêiner de altura fixa para os gráficos Chart.js do Insights.
+   Obrigatório: responsive:true + maintainAspectRatio:false exige um pai com
+   altura definida em CSS, senão canvas e pai entram em loop de redimensionamento
+   (o canvas cresce pra caber o pai, o pai cresce pra caber o canvas — trava a tela). */
+.insights-chart-wrap { position: relative; width: 100%; height: 240px; }
+.insights-chart-wrap-tall { height: 200px; }
+
+.insights-assunto-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-2);
+    border-left: 3px solid var(--color-yellow, #ca8a04);
+}
+.insights-assunto-item + .insights-assunto-item { margin-top: 8px; }
+.insights-assunto-info { min-width: 0; }
+.insights-assunto-titulo { font-weight: 600; font-size: 0.9375rem; color: var(--color-text); }
+.insights-assunto-meta { font-size: 0.8125rem; color: var(--color-text-3); margin-top: 2px; }
+.insights-assunto-motivo { font-size: 0.8125rem; color: var(--color-text-2); font-style: italic; margin-top: 4px; }
+
+.insights-detalhe-lista {
+    margin-top: 16px;
+    max-height: 260px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.insights-detalhe-titulo {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
+}
+.insights-detalhe-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-2);
+}
+.insights-detalhe-icone { font-size: 1.1rem; line-height: 1.4; }
+.insights-detalhe-info { min-width: 0; }
+.insights-detalhe-cat { font-size: 0.8125rem; font-weight: 600; color: var(--color-text); }
+.insights-detalhe-meta { font-size: 0.75rem; color: var(--color-text-3); margin-top: 2px; }
+
 .stat-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -863,6 +924,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
     border-radius: var(--radius);
     overflow: hidden;
 }
+.cronograma-card-concluido { border-color: var(--color-green); }
 
 .cronograma-header {
     display: flex;
@@ -946,6 +1008,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 }
 .aluno-cron-card-atrasado { border-color: var(--color-red); }
 .aluno-cron-card-vencendo { border-color: var(--color-yellow); }
+.aluno-cron-card-concluido { border-color: var(--color-green); }
 
 .aluno-cron-avatar {
     width: 40px;
@@ -993,6 +1056,7 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .stat-chip-danger  { background: var(--color-red-bg);    color: var(--color-red); }
 .stat-chip-warning { background: var(--color-yellow-bg); color: var(--color-yellow); }
 .stat-chip-muted   { background: var(--color-surface-2); color: var(--color-text-3); }
+.stat-chip-success { background: var(--color-green-bg);  color: var(--color-green); }
 
 /* Tarefa clicável (aluno) */
 .tarefa-clicavel {

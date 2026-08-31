@@ -413,6 +413,7 @@ Modules.Cronograma = {
             const concluidas = tarefas.filter(t => t.status === 'concluida').length;
             const total      = tarefas.length;
             const pct        = total > 0 ? Math.round((concluidas / total) * 100) : 0;
+            const concluido  = total > 0 && concluidas === total;
             const isAluno    = role === 'aluno';
 
             // Agrupar por dia_semana
@@ -474,10 +475,13 @@ Modules.Cronograma = {
                 : semDia.map(renderTarefa).join('') || '<p class="text-muted small">Sem tarefas cadastradas</p>';
 
             return `
-                <div class="cronograma-card">
+                <div class="cronograma-card ${concluido ? 'cronograma-card-concluido' : ''}">
                     <div class="cronograma-header">
                         <div>
-                            <h3 class="cronograma-titulo">${escapeHtml(c.titulo)}</h3>
+                            <h3 class="cronograma-titulo">
+                                ${escapeHtml(c.titulo)}
+                                ${concluido ? badge('✅ Concluído', 'badge-success') : ''}
+                            </h3>
                             ${role !== 'aluno' ? `<p class="cronograma-aluno">${escapeHtml(c.aluno?.nome || '')}</p>` : ''}
                             <p class="cronograma-semana">Data final: ${fmt.date(c.semana_inicio)}</p>
                         </div>
@@ -599,8 +603,9 @@ Modules.Cronograma = {
     },
 
     _renderAlunoCard(r) {
-        const pct    = r.total > 0 ? Math.round((r.concluidas / r.total) * 100) : 0;
-        const alerta = r.atrasadas > 0 ? 'aluno-cron-card-atrasado' : r.vencendo > 0 ? 'aluno-cron-card-vencendo' : '';
+        const pct       = r.total > 0 ? Math.round((r.concluidas / r.total) * 100) : 0;
+        const concluido = r.total > 0 && r.concluidas === r.total;
+        const alerta = r.atrasadas > 0 ? 'aluno-cron-card-atrasado' : r.vencendo > 0 ? 'aluno-cron-card-vencendo' : concluido ? 'aluno-cron-card-concluido' : '';
         const prazoClasse = r.prazoDiff === null ? '' : r.prazoDiff < 0 ? 'prazo-atrasado' : r.prazoDiff <= 2 ? 'prazo-vencendo' : '';
 
         return `
@@ -623,7 +628,9 @@ Modules.Cronograma = {
                 <div class="aluno-cron-stats">
                     ${r.atrasadas > 0 ? `<span class="stat-chip stat-chip-danger">🔴 ${r.atrasadas} atrasada${r.atrasadas > 1 ? 's' : ''}</span>` : ''}
                     ${r.vencendo  > 0 ? `<span class="stat-chip stat-chip-warning">🟡 ${r.vencendo} vencendo</span>` : ''}
-                    <span class="stat-chip stat-chip-muted">✅ ${r.concluidas}/${r.total}</span>
+                    ${concluido
+                        ? `<span class="stat-chip stat-chip-success">✅ Concluído</span>`
+                        : `<span class="stat-chip stat-chip-muted">✅ ${r.concluidas}/${r.total}</span>`}
                 </div>
             </div>
         `;

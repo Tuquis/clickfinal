@@ -43,6 +43,7 @@ const SIDEBAR_ITEMS = {
         { id: 'disponibilidade', icon: '🕐', label: 'Disponibilidade' },
         { id: 'financeiro',      icon: '💰', label: 'Financeiro' },
         { id: 'relatorios',      icon: '📄', label: 'Relatórios' },
+        { id: 'insights',        icon: '📊', label: 'Insights' },
         { id: 'psicopedagogia',  icon: '🧠', label: 'Psicopedagogia' },
         { id: 'auditoria',       icon: '🔍', label: 'Auditoria' },
     ],
@@ -132,6 +133,7 @@ function registerRoutes() {
     reg('alunos',          Modules.Alunos);
     reg('agenda',          Modules.Agenda);
     reg('relatorios',      Modules.Relatorios);
+    reg('insights',        Modules.Insights);
     reg('cronograma',      Modules.Cronograma);
     reg('atividades',      Modules.Atividades);
     reg('financeiro',      Modules.Financeiro);

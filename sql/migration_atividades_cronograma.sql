@@ -28,6 +28,11 @@ DECLARE
     v_semana_fim    DATE;
     v_dia_semana    INTEGER;
 BEGIN
+    -- Slides para fixação não entram no mural do cronograma, ficam só na tela Atividades
+    IF NEW.tipo_material = 'slide' THEN
+        RETURN NEW;
+    END IF;
+
     -- "Semana" do cronograma = prazo da atividade; sem prazo, usa a próxima sexta-feira
     v_semana_fim := COALESCE(
         NEW.prazo,

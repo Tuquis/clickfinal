@@ -44,6 +44,22 @@ Modules.Atividades = {
                                 placeholder="Instruções detalhadas para o aluno"></textarea>
                         </div>
                         <div class="form-group">
+                            <label class="form-label">Tipo de Material *</label>
+                            <div class="radio-list" style="flex-direction:row;gap:20px">
+                                <label class="radio-item">
+                                    <input type="radio" name="atv-tipo-material" value="lista_exercicios" checked />
+                                    📝 Lista de Exercícios
+                                </label>
+                                <label class="radio-item">
+                                    <input type="radio" name="atv-tipo-material" value="slide" />
+                                    📊 Slides para Fixação
+                                </label>
+                            </div>
+                            <p class="text-muted small" style="margin-top:4px">
+                                Lista de exercícios entra no cronograma do aluno. Slides ficam só aqui na tela Atividades.
+                            </p>
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Prazo de entrega</label>
                             <input type="date" class="input" id="atv-prazo" />
                         </div>
@@ -69,7 +85,7 @@ Modules.Atividades = {
                     <div class="modal-body">
                         <input type="hidden" id="resp-atividade-id" />
                         <p id="resp-atividade-titulo" style="font-weight:600;margin-bottom:16px;color:var(--color-text-1)"></p>
-                        <div style="display:flex;gap:12px;margin-bottom:16px;">
+                        <div style="display:flex;gap:12px;margin-bottom:8px;">
                             <button type="button" class="btn btn-secondary" style="flex:1"
                                 onclick="document.getElementById('resp-arquivo-foto').click()">
                                 📸 Tirar Foto
@@ -79,24 +95,17 @@ Modules.Atividades = {
                                 📁 Selecionar Arquivo
                             </button>
                         </div>
-                        <!-- input câmera -->
+                        <p class="text-muted small" style="margin-bottom:12px">
+                            Pode enviar mais de uma foto — toque em "Tirar Foto" ou "Selecionar Arquivo" quantas vezes precisar.
+                        </p>
+                        <!-- input câmera (uma foto por toque, pode repetir) -->
                         <input type="file" id="resp-arquivo-foto" accept="image/*" capture="environment"
                             style="display:none" onchange="Modules.Atividades._onArquivoSelecionado(this)" />
-                        <!-- input arquivo geral -->
-                        <input type="file" id="resp-arquivo-doc"
+                        <!-- input arquivo geral (permite selecionar vários de uma vez) -->
+                        <input type="file" id="resp-arquivo-doc" multiple
                             style="display:none" onchange="Modules.Atividades._onArquivoSelecionado(this)" />
 
-                        <div id="resp-arquivo-preview" style="display:none;padding:12px 14px;background:var(--color-surface-2);border-radius:var(--radius-sm);border:1px solid var(--color-border);">
-                            <div style="display:flex;align-items:center;gap:10px;">
-                                <span id="resp-arquivo-icone" style="font-size:1.5rem">📄</span>
-                                <div>
-                                    <div id="resp-arquivo-nome" style="font-weight:600;font-size:.9rem"></div>
-                                    <div id="resp-arquivo-tamanho" style="font-size:.8rem;color:var(--color-text-3)"></div>
-                                </div>
-                                <button type="button" onclick="Modules.Atividades._limparArquivo()"
-                                    style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--color-text-3);font-size:1.2rem">×</button>
-                            </div>
-                        </div>
+                        <div id="resp-arquivos-lista" style="display:none;flex-direction:column;gap:8px;"></div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-ghost" onclick="closeModal('modal-resposta-atividade')">Cancelar</button>
@@ -217,6 +226,10 @@ Modules.Atividades = {
                             </span>` : ''}
                         </div>
                         <div class="atividade-meta">
+                            ${a.tipo_material === 'slide'
+                                ? badge('📊 Slide', 'badge-info')
+                                : badge('📝 Lista de Exercícios', 'badge-secondary')
+                            }
                             ${Auth.can('admin','professor')
                                 ? `<span>Aluno: <strong>${escapeHtml(a.aluno?.nome || '—')}</strong></span>`
                                 : ''
@@ -274,6 +287,8 @@ Modules.Atividades = {
         document.getElementById('atv-descricao').value = '';
         document.getElementById('atv-prazo').value    = '';
         document.getElementById('atv-arquivo').value  = '';
+        const tipoDefault = document.querySelector('input[name="atv-tipo-material"][value="lista_exercicios"]');
+        if (tipoDefault) tipoDefault.checked = true;
         openModal('modal-atividade');
     },
 
@@ -283,6 +298,8 @@ Modules.Atividades = {
         const descricao = document.getElementById('atv-descricao').value.trim();
         const prazo    = document.getElementById('atv-prazo').value;
         const file     = document.getElementById('atv-arquivo').files[0];
+        const tipoMaterialEl = document.querySelector('input[name="atv-tipo-material"]:checked');
+        const tipoMaterial   = tipoMaterialEl ? tipoMaterialEl.value : 'lista_exercicios';
 
         const errors = validateForm([
             { value: alunoId, label: 'Aluno',  rules: ['required'] },
@@ -305,7 +322,8 @@ Modules.Atividades = {
                 titulo,
                 descricao:    descricao || null,
                 prazo:        prazo || null,
-                arquivo_url:  arquivoUrl
+                arquivo_url:  arquivoUrl,
+                tipo_material: tipoMaterial
             });
 
             if (error) throw error;
@@ -327,61 +345,91 @@ Modules.Atividades = {
         document.getElementById('resp-atividade-titulo').textContent = titulo;
         document.getElementById('resp-arquivo-foto').value    = '';
         document.getElementById('resp-arquivo-doc').value     = '';
-        document.getElementById('resp-arquivo-preview').style.display = 'none';
         document.getElementById('btn-enviar-resposta').disabled = true;
-        this._arquivoSelecionado = null;
+        this._arquivosSelecionados = [];
+        this._renderArquivosPreview();
         openModal('modal-resposta-atividade');
     },
 
     _onArquivoSelecionado(input) {
-        const file = input.files[0];
-        if (!file) return;
-        this._arquivoSelecionado = file;
+        const novos = Array.from(input.files || []);
+        if (!novos.length) return;
+        this._arquivosSelecionados = (this._arquivosSelecionados || []).concat(novos);
+        input.value = ''; // permite selecionar o mesmo arquivo de novo (ex: outra foto) sem perder as já escolhidas
+        this._renderArquivosPreview();
+    },
 
-        const isImagem = file.type.startsWith('image/');
-        document.getElementById('resp-arquivo-icone').textContent = isImagem ? '🖼️' : '📄';
-        document.getElementById('resp-arquivo-nome').textContent  = file.name;
-        document.getElementById('resp-arquivo-tamanho').textContent =
-            file.size > 1024 * 1024
+    _removerArquivo(index) {
+        if (!this._arquivosSelecionados) return;
+        this._arquivosSelecionados.splice(index, 1);
+        this._renderArquivosPreview();
+    },
+
+    _renderArquivosPreview() {
+        const lista = document.getElementById('resp-arquivos-lista');
+        const files = this._arquivosSelecionados || [];
+
+        if (!files.length) {
+            lista.style.display = 'none';
+            lista.innerHTML = '';
+            document.getElementById('btn-enviar-resposta').disabled = true;
+            return;
+        }
+
+        lista.style.display = 'flex';
+        lista.innerHTML = files.map((file, i) => {
+            const isImagem = file.type.startsWith('image/');
+            const tamanho = file.size > 1024 * 1024
                 ? (file.size / (1024 * 1024)).toFixed(1) + ' MB'
                 : Math.round(file.size / 1024) + ' KB';
+            return `
+                <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--color-surface-2);border-radius:var(--radius-sm);border:1px solid var(--color-border);">
+                    <span style="font-size:1.5rem">${isImagem ? '🖼️' : '📄'}</span>
+                    <div style="min-width:0;flex:1">
+                        <div style="font-weight:600;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(file.name)}</div>
+                        <div style="font-size:.8rem;color:var(--color-text-3)">${tamanho}</div>
+                    </div>
+                    <button type="button" onclick="Modules.Atividades._removerArquivo(${i})"
+                        style="background:none;border:none;cursor:pointer;color:var(--color-text-3);font-size:1.2rem">×</button>
+                </div>
+            `;
+        }).join('');
 
-        document.getElementById('resp-arquivo-preview').style.display = 'block';
         document.getElementById('btn-enviar-resposta').disabled = false;
     },
 
-    _limparArquivo() {
-        document.getElementById('resp-arquivo-foto').value = '';
-        document.getElementById('resp-arquivo-doc').value  = '';
-        document.getElementById('resp-arquivo-preview').style.display = 'none';
-        document.getElementById('btn-enviar-resposta').disabled = true;
-        this._arquivoSelecionado = null;
-    },
-
     async enviarResposta() {
-        const file       = this._arquivoSelecionado;
+        const files = this._arquivosSelecionados || [];
         const atividadeId = document.getElementById('resp-atividade-id').value;
-        if (!file || !atividadeId) return showToast('Selecione um arquivo', 'error');
+        if (!files.length || !atividadeId) return showToast('Selecione ao menos um arquivo', 'error');
 
         setLoading('#btn-enviar-resposta', true);
+        const ts = Date.now();
+        let enviados = 0;
         try {
-            const safeName = sanitizeStorageName(file.name);
-            const path     = `respostas/${atividadeId}/${AppState.userProfile.id}-${Date.now()}-${safeName}`;
-            const url      = await uploadFile('materiais', path, file);
+            let ultimaUrl = null;
+            for (let i = 0; i < files.length; i++) {
+                const file     = files[i];
+                const safeName = sanitizeStorageName(file.name);
+                const path     = `respostas/${atividadeId}/${AppState.userProfile.id}-${ts}-${i}-${safeName}`;
+                const url      = await uploadFile('materiais', path, file);
+                ultimaUrl      = url;
 
-            const { error } = await supabase.from('respostas_atividades').insert({
-                atividade_id: atividadeId,
-                aluno_id:     AppState.userProfile.id,
-                arquivo_url:  url,
-                arquivo_nome: file.name
-            });
-            if (error) throw error;
+                const { error } = await supabase.from('respostas_atividades').insert({
+                    atividade_id: atividadeId,
+                    aluno_id:     AppState.userProfile.id,
+                    arquivo_url:  url,
+                    arquivo_nome: file.name
+                });
+                if (error) throw error;
+                enviados++;
+            }
 
             // Marca a tarefa correspondente no cronograma como concluída (não bloqueia o fluxo se falhar)
             supabase.from('cronograma_tarefas')
                 .update({
                     status:        'concluida',
-                    evidencia_url: url,
+                    evidencia_url: ultimaUrl,
                     concluida_em:  new Date().toISOString()
                 })
                 .eq('atividade_id', atividadeId)
@@ -389,11 +437,20 @@ Modules.Atividades = {
                     if (cronErr) console.warn('Não foi possível atualizar o cronograma:', cronErr.message);
                 });
 
-            showToast('Resposta enviada com sucesso!', 'success');
+            showToast(
+                enviados > 1 ? `${enviados} arquivos enviados com sucesso!` : 'Resposta enviada com sucesso!',
+                'success'
+            );
             closeModal('modal-resposta-atividade');
             await this._loadList();
         } catch (err) {
-            showToast(err.message || 'Erro ao enviar resposta', 'error');
+            if (enviados > 0) {
+                showToast(`${enviados} de ${files.length} arquivo(s) enviado(s). ${err.message || 'Erro ao enviar o restante.'}`, 'warning', 7000);
+                closeModal('modal-resposta-atividade');
+                await this._loadList();
+            } else {
+                showToast(err.message || 'Erro ao enviar resposta', 'error');
+            }
         } finally {
             setLoading('#btn-enviar-resposta', false);
         }
