@@ -109,6 +109,21 @@ Modules.Usuarios = {
                                     <input type="number" class="input" id="u-aulas" value="0" min="0" />
                                 </div>
                             </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Pacote</label>
+                                    <select class="input" id="u-pacote-select">
+                                        <option value="">Nenhum pacote selecionado</option>
+                                    </select>
+                                    <p class="text-muted small" style="margin-top:4px">
+                                        Nome e valor vêm do cadastro em Financeiro. <a href="#" onclick="Router.navigate('financeiro');return false;">Gerenciar pacotes</a>
+                                    </p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Dia do Vencimento</label>
+                                    <input type="number" class="input" id="u-dia-vencimento" placeholder="Ex: 10" min="1" max="31" />
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Campos extras para PROFESSOR -->
@@ -196,6 +211,18 @@ Modules.Usuarios = {
                 </div>
             </div>
         `);
+
+        var pacotesRes = await supabase.from('pacotes').select('*').order('ativo', { ascending: false }).order('nome');
+        this._pacotes = pacotesRes.data || [];
+        var pacoteSel = document.getElementById('u-pacote-select');
+        if (pacoteSel) {
+            pacoteSel.innerHTML = '<option value="">Nenhum pacote selecionado</option>' +
+                this._pacotes.map(function(p) {
+                    return '<option value="' + p.id + '" data-nome="' + escapeHtml(p.nome) + '" data-valor="' + p.valor + '">' +
+                        escapeHtml(p.nome) + ' — ' + fmt.currency(p.valor) + (!p.ativo ? ' (inativo)' : '') +
+                        '</option>';
+                }).join('');
+        }
 
         await this.loadList();
 
@@ -331,9 +358,10 @@ Modules.Usuarios = {
         document.getElementById('u-professor-fields').style.display = 'none';
         document.getElementById('u-psico-fields').style.display     = 'none';
         document.getElementById('u-mentor-fields').style.display    = 'none';
-        ['u-serie','u-disciplina','u-responsavel','u-telefone','u-telefone-aluno'].forEach(function(id) {
+        ['u-serie','u-disciplina','u-responsavel','u-telefone','u-telefone-aluno','u-dia-vencimento'].forEach(function(id) {
             document.getElementById(id).value = '';
         });
+        document.getElementById('u-pacote-select').value = '';
         document.getElementById('u-aulas').value = '0';
         document.getElementById('u-materia').value = '';
         document.getElementById('u-pix').value = '';
@@ -376,6 +404,8 @@ Modules.Usuarios = {
                 document.getElementById('u-telefone').value       = ai.telefone        || '';
                 document.getElementById('u-telefone-aluno').value = ai.telefone_aluno  || '';
                 document.getElementById('u-aulas').value          = ai.aulas_disponiveis;
+                document.getElementById('u-pacote-select').value  = ai.pacote_id || '';
+                document.getElementById('u-dia-vencimento').value = ai.dia_vencimento ?? '';
             }
         } else if (u.role === 'professor') {
             document.getElementById('u-professor-fields').style.display = 'block';
@@ -464,14 +494,28 @@ Modules.Usuarios = {
             var responsavel    = document.getElementById('u-responsavel').value.trim();
             var telefone       = document.getElementById('u-telefone').value.trim();
             var telefoneAluno  = document.getElementById('u-telefone-aluno').value.trim();
+            var pacoteSelectEl = document.getElementById('u-pacote-select');
+            var pacoteId       = pacoteSelectEl.value || null;
+            var pacoteOpt      = pacoteSelectEl.options[pacoteSelectEl.selectedIndex];
+            var pacoteNome     = pacoteId ? pacoteOpt.dataset.nome : null;
+            var pacoteValor    = pacoteId ? parseFloat(pacoteOpt.dataset.valor) : null;
+            var diaVencRaw     = document.getElementById('u-dia-vencimento').value;
+            var diaVencimento  = diaVencRaw !== '' ? parseInt(diaVencRaw) : null;
             if (!serie)       errors.push('Série é obrigatória');
             if (!disciplina)  errors.push('Disciplina é obrigatória');
             if (!responsavel) errors.push('Responsável é obrigatório');
             if (!telefone)    errors.push('Telefone do responsável é obrigatório');
+            if (diaVencimento !== null && (isNaN(diaVencimento) || diaVencimento < 1 || diaVencimento > 31)) {
+                errors.push('Dia do vencimento deve ser entre 1 e 31');
+            }
             alunoData = {
                 serie, disciplina, responsavel, telefone,
                 telefone_aluno: telefoneAluno || null,
-                aulas_disponiveis: parseInt(document.getElementById('u-aulas').value) || 0
+                aulas_disponiveis: parseInt(document.getElementById('u-aulas').value) || 0,
+                pacote_id: pacoteId,
+                pacote_nome: pacoteNome,
+                pacote_valor: pacoteValor,
+                dia_vencimento: diaVencimento
             };
         }
 
@@ -626,7 +670,7 @@ Modules.Usuarios = {
 
     async confirmarDelete(id, authId) {
         var confirmed = await confirmAction(
-            'Excluir permanentemente? Todos os dados do usuário (relatórios, agenda, financeiro) serão apagados. Esta ação não pode ser desfeita.'
+            'Excluir permanentemente? Todos os dados do usuário (relatórios, agenda) serão apagados. Esta ação não pode ser desfeita.'
         );
         if (!confirmed) return;
 

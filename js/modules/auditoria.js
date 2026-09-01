@@ -22,9 +22,9 @@ Modules.Auditoria = {
                         <option value="usuarios">usuarios</option>
                         <option value="agenda_meet">agenda_meet</option>
                         <option value="relatorios">relatorios</option>
-                        <option value="financeiro">financeiro</option>
                         <option value="cronograma">cronograma</option>
                         <option value="alunos_info">alunos_info</option>
+                        <option value="pacotes">pacotes</option>
                     </select>
                     <input type="date" class="input" id="filter-audit-data" onchange="Modules.Auditoria._load()" />
                 </div>

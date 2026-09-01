@@ -1,283 +1,218 @@
 // ============================================================
-// MÓDULO: FINANCEIRO
+// MÓDULO: FINANCEIRO (admin) — catálogo de pacotes (nome + valor)
+// e visão geral de alunos com pacote + dia de vencimento.
+// Pacote e vencimento do aluno são editados no modal de Usuários;
+// aqui é só o cadastro dos pacotes e a listagem de conferência.
 // ============================================================
 
 Modules.Financeiro = {
-    _page: 1,
-    _filter: '',
-
     async render() {
-        const isAdmin = Auth.can('admin');
+        if (!Auth.can('admin')) return;
 
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Financeiro</h1>
-                ${isAdmin ? `<button class="btn btn-primary" onclick="Modules.Financeiro.openCreate()">+ Nova Mensalidade</button>` : ''}
+                <button class="btn btn-primary" onclick="Modules.Financeiro.openCreate()">+ Novo Pacote</button>
             </div>
 
-            <div class="card">
-                <div class="card-toolbar">
-                    <select class="input" id="filter-fin-status" onchange="Modules.Financeiro._applyFilter()">
-                        <option value="">Todos os status</option>
-                        <option value="pendente">Pendente</option>
-                        <option value="pago">Pago</option>
-                        <option value="atrasado">Atrasado</option>
-                    </select>
-                    ${isAdmin ? `
-                    <select class="input" id="filter-fin-aluno" onchange="Modules.Financeiro._applyFilter()">
-                        <option value="">Todos os alunos</option>
-                    </select>` : ''}
-                </div>
-                <div id="financeiro-list" class="card-body">
+            <div class="card mb-3">
+                <div class="card-header"><h3>Pacotes</h3></div>
+                <div class="card-body" id="financeiro-list">
                     <div class="loader-inline"></div>
                 </div>
             </div>
 
-            <!-- MODAL CRIAR MENSALIDADE -->
-            <div class="modal-overlay" id="modal-financeiro">
-                <div class="modal-box">
+            <div class="card">
+                <div class="card-header"><h3>Alunos — Pacote e Vencimento</h3></div>
+                <div class="card-body" id="financeiro-alunos-list">
+                    <div class="loader-inline"></div>
+                </div>
+            </div>
+
+            <!-- MODAL CRIAR/EDITAR PACOTE -->
+            <div class="modal-overlay" id="modal-pacote">
+                <div class="modal-box modal-sm">
                     <div class="modal-header">
-                        <h3>Nova Mensalidade</h3>
-                        <button class="modal-close" onclick="closeModal('modal-financeiro')">×</button>
+                        <h3 id="modal-pacote-title">Novo Pacote</h3>
+                        <button class="modal-close" onclick="closeModal('modal-pacote')">×</button>
                     </div>
                     <div class="modal-body">
+                        <input type="hidden" id="pac-id" />
                         <div class="form-group">
-                            <label class="form-label">Aluno *</label>
-                            <select class="input" id="fin-aluno">
-                                <option value="">Selecionar aluno...</option>
-                            </select>
+                            <label class="form-label">Nome do Pacote *</label>
+                            <input type="text" class="input" id="pac-nome" placeholder="Ex: Pacote Mensal 4 aulas" />
                         </div>
                         <div class="form-group">
                             <label class="form-label">Valor (R$) *</label>
-                            <input type="number" class="input" id="fin-valor" step="0.01" min="0.01" placeholder="0,00" />
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Dia do Vencimento (1–31) *</label>
-                            <input type="number" class="input" id="fin-dia" min="1" max="31" placeholder="Ex: 10" style="max-width:140px;" />
-                            <span style="font-size:.78rem;color:var(--color-text-3);margin-top:4px;">A mensalidade se repete todo mês nesse dia, a partir do próximo mês.</span>
+                            <input type="number" class="input" id="pac-valor" placeholder="0,00" min="0" step="0.01" />
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-ghost" onclick="closeModal('modal-financeiro')">Cancelar</button>
-                        <button class="btn btn-primary" id="btn-save-fin" onclick="Modules.Financeiro.save()">Criar Mensalidade</button>
+                        <button class="btn btn-ghost" onclick="closeModal('modal-pacote')">Cancelar</button>
+                        <button class="btn btn-primary" id="btn-save-pacote" onclick="Modules.Financeiro.save()">Salvar</button>
                     </div>
                 </div>
             </div>
         `);
 
-        if (isAdmin) {
-            const { data: alunos } = await supabase
-                .from('usuarios').select('id,nome').eq('role','aluno').order('nome');
-            const selCreate = document.getElementById('fin-aluno');
-            const selFilter = document.getElementById('filter-fin-aluno');
-            alunos?.forEach(a => {
-                selCreate.innerHTML += `<option value="${a.id}">${escapeHtml(a.nome)}</option>`;
-                selFilter.innerHTML += `<option value="${a.id}">${escapeHtml(a.nome)}</option>`;
-            });
-        }
-
-        await this._loadList();
+        await Promise.all([this.loadList(), this.loadAlunosList()]);
     },
 
-    _applyFilter() {
-        this._page = 1;
-        this._loadList();
-    },
-
-    // ── lista ─────────────────────────────────────────────────
-    async _loadList() {
-        const container = document.getElementById('financeiro-list');
+    // ── Alunos com pacote/vencimento (somente leitura — edição fica em Usuários) ──
+    async loadAlunosList() {
+        const container = document.getElementById('financeiro-alunos-list');
         if (!container) return;
 
-        const uid     = AppState.userProfile.id;
-        const isAdmin = Auth.can('admin');
-
-        let query = supabase
-            .from('v_financeiro_completo')
-            .select('*', { count: 'exact' })
-            .order('vencimento', { ascending: false });
-
-        if (!isAdmin) query = query.eq('aluno_id', uid);
-
-        const statusFilter = document.getElementById('filter-fin-status')?.value;
-        const alunoFilter   = document.getElementById('filter-fin-aluno')?.value;
-
-        if (statusFilter) query = query.eq('status', statusFilter);
-        if (alunoFilter)  query = query.eq('aluno_id', alunoFilter);
-
-        const from = (this._page - 1) * APP_CONFIG.paginationSize;
-        query = query.range(from, from + APP_CONFIG.paginationSize - 1);
-
-        const { data, error, count } = await query;
+        const { data, error } = await supabase
+            .from('alunos_info')
+            .select('pacote_nome, pacote_valor, dia_vencimento, usuario:usuarios!alunos_info_usuario_id_fkey(id, nome, ativo)');
 
         if (error) {
             container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`;
             return;
         }
 
-        const totalPages = Math.ceil((count || 0) / APP_CONFIG.paginationSize);
+        const alunos = (data || [])
+            .filter(a => a.usuario && a.usuario.ativo)
+            .sort((a, b) => a.usuario.nome.localeCompare(b.usuario.nome));
+
+        if (!alunos.length) {
+            container.innerHTML = emptyState('Nenhum aluno ativo cadastrado');
+            return;
+        }
 
         container.innerHTML = `
             <table class="table">
                 <thead>
-                    <tr>
-                        ${isAdmin ? '<th>Aluno</th>' : ''}
-                        <th>Valor</th>
-                        <th>Dia</th>
-                        <th>Status</th>
-                        <th>Pago em</th>
-                        ${isAdmin ? '<th>Ações</th>' : ''}
-                    </tr>
+                    <tr><th>Aluno</th><th>Pacote</th><th>Valor</th><th>Vencimento</th></tr>
                 </thead>
                 <tbody>
-                    ${data?.length
-                        ? data.map(f => {
-                            const s       = fmt.status_fin(f.status);
-                            const vencido = f.status === 'atrasado';
-                            return `
-                                <tr class="${vencido ? 'row-danger' : ''}">
-                                    ${isAdmin ? `<td>${escapeHtml(f.aluno_nome)}</td>` : ''}
-                                    <td><strong>${fmt.currency(f.valor)}</strong></td>
-                                    <td class="${vencido ? 'text-danger' : ''}">dia ${f.dia_vencimento || '—'}</td>
-                                    <td>${badge(s.label, s.class)}</td>
-                                    <td>${f.pago_em ? fmt.date(f.pago_em) : '—'}</td>
-                                    ${isAdmin ? `
-                                    <td>
-                                        <div class="action-btns">
-                                            ${f.status !== 'pago'
-                                                ? `<button class="btn btn-ghost btn-sm text-success"
-                                                    onclick="Modules.Financeiro.marcarPago('${f.id}', ${f.dia_vencimento || 'null'}, '${escapeHtml(f.aluno_id)}', ${f.valor})">Marcar Pago</button>`
-                                                : ''
-                                            }
-                                            <button class="btn btn-ghost btn-sm text-danger"
-                                                onclick="Modules.Financeiro.deletar('${f.id}')">Excluir</button>
-                                        </div>
-                                    </td>` : ''}
-                                </tr>
-                            `;
-                        }).join('')
-                        : `<tr><td colspan="${isAdmin ? 6 : 4}">${emptyState('Nenhuma mensalidade encontrada')}</td></tr>`
-                    }
+                    ${alunos.map(a => `
+                        <tr>
+                            <td>${escapeHtml(a.usuario.nome)}</td>
+                            <td>${a.pacote_nome ? escapeHtml(a.pacote_nome) : '<span class="text-muted">Sem pacote</span>'}</td>
+                            <td>${a.pacote_valor != null ? fmt.currency(a.pacote_valor) : '—'}</td>
+                            <td>${a.dia_vencimento ? 'Dia ' + a.dia_vencimento : '—'}</td>
+                        </tr>
+                    `).join('')}
                 </tbody>
             </table>
-            ${paginationHtml(this._page, totalPages, 'Modules.Financeiro._goPage')}
         `;
     },
 
-    _goPage(p) {
-        Modules.Financeiro._page = p;
-        Modules.Financeiro._loadList();
+    async loadList() {
+        const container = document.getElementById('financeiro-list');
+        if (!container) return;
+
+        const { data, error } = await supabase
+            .from('pacotes')
+            .select('*')
+            .order('ativo', { ascending: false })
+            .order('nome', { ascending: true });
+
+        if (error) {
+            container.innerHTML = `<p class="text-danger">Erro: ${escapeHtml(error.message)}</p>`;
+            return;
+        }
+
+        if (!data?.length) {
+            container.innerHTML = emptyState('Nenhum pacote cadastrado ainda');
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="table">
+                <thead>
+                    <tr><th>Pacote</th><th>Valor</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                    ${data.map(p => `
+                        <tr>
+                            <td>${escapeHtml(p.nome)}</td>
+                            <td>${fmt.currency(p.valor)}</td>
+                            <td>${p.ativo ? badge('Ativo', 'badge-success') : badge('Inativo', 'badge-secondary')}</td>
+                            <td>
+                                <div class="action-btns">
+                                    <button class="btn btn-ghost btn-sm" onclick="Modules.Financeiro.openEdit('${p.id}')">Editar</button>
+                                    <button class="btn btn-ghost btn-sm" onclick="Modules.Financeiro.toggleAtivo('${p.id}', ${p.ativo})">
+                                        ${p.ativo ? 'Desativar' : 'Ativar'}
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
     },
 
-    // ── abrir modal criar ─────────────────────────────────────
     openCreate() {
-        document.getElementById('fin-aluno').value = '';
-        document.getElementById('fin-valor').value = '';
-        document.getElementById('fin-dia').value   = '';
-        openModal('modal-financeiro');
+        document.getElementById('modal-pacote-title').textContent = 'Novo Pacote';
+        document.getElementById('pac-id').value    = '';
+        document.getElementById('pac-nome').value  = '';
+        document.getElementById('pac-valor').value = '';
+        openModal('modal-pacote');
     },
 
-    // ── salvar mensalidade ────────────────────────────────────
+    async openEdit(id) {
+        const { data: p, error } = await supabase.from('pacotes').select('*').eq('id', id).single();
+        if (error || !p) return showToast('Pacote não encontrado', 'error');
+
+        document.getElementById('modal-pacote-title').textContent = 'Editar Pacote';
+        document.getElementById('pac-id').value    = p.id;
+        document.getElementById('pac-nome').value  = p.nome;
+        document.getElementById('pac-valor').value = p.valor;
+        openModal('modal-pacote');
+    },
+
     async save() {
-        const alunoId = document.getElementById('fin-aluno').value;
-        const valor   = parseFloat(document.getElementById('fin-valor').value);
-        const dia     = parseInt(document.getElementById('fin-dia').value);
+        const id       = document.getElementById('pac-id').value;
+        const nome     = document.getElementById('pac-nome').value.trim();
+        const valorRaw = document.getElementById('pac-valor').value;
+        const valor    = parseFloat(valorRaw);
 
         const errors = validateForm([
-            { value: alunoId, label: 'Aluno', rules: ['required'] }
+            { value: nome, label: 'Nome do pacote', rules: ['required'] }
         ]);
-        if (!valor || valor <= 0) errors.push('Valor deve ser maior que zero');
-        if (!dia || dia < 1 || dia > 31) errors.push('Informe um dia de vencimento válido (1 a 31)');
-
+        if (valorRaw === '' || isNaN(valor) || valor < 0) errors.push('Informe um valor válido');
         if (errors.length) return showToast(errors[0], 'error');
 
-        const vencimento = this._calcProximoVencimento(dia);
-
-        setLoading('#btn-save-fin', true);
+        setLoading('#btn-save-pacote', true);
         try {
-            const payload = {
-                aluno_id:       alunoId,
-                descricao:      'Mensalidade',
-                valor,
-                vencimento,
-                recorrente:     true,
-                dia_vencimento: dia,
-                created_by:     AppState.userProfile.id
-            };
-
-            const { error } = await supabase.from('financeiro').insert(payload);
-            if (error) throw error;
-
-            await auditLog('COBRANCA_CRIADA', 'financeiro', null, { alunoId, valor, vencimento });
-            showToast('Mensalidade criada com sucesso', 'success');
-            closeModal('modal-financeiro');
-            await this._loadList();
+            if (id) {
+                const { error } = await supabase.from('pacotes').update({ nome, valor }).eq('id', id);
+                if (error) throw error;
+                await auditLog('PACOTE_ATUALIZADO', 'pacotes', id, { nome, valor });
+                showToast('Pacote atualizado com sucesso', 'success');
+            } else {
+                const { error } = await supabase.from('pacotes').insert({ nome, valor });
+                if (error) throw error;
+                await auditLog('PACOTE_CRIADO', 'pacotes', null, { nome, valor });
+                showToast('Pacote criado com sucesso', 'success');
+            }
+            closeModal('modal-pacote');
+            await this.loadList();
         } catch (err) {
             showToast(err.message || 'Erro ao salvar', 'error');
         } finally {
-            setLoading('#btn-save-fin', false);
+            setLoading('#btn-save-pacote', false);
         }
     },
 
-    // Calcula o vencimento do próximo mês dado um dia
-    _calcProximoVencimento(dia) {
-        const hoje     = new Date();
-        let ano        = hoje.getFullYear();
-        let mes        = hoje.getMonth() + 1; // próximo mês (0-based + 1 = mês atual 1-based + 1)
-        if (mes > 11) { mes = 0; ano++; }
-        const maxDia   = new Date(ano, mes + 1, 0).getDate();
-        const diaReal  = Math.min(dia, maxDia);
-        const d        = new Date(ano, mes, diaReal);
-        return d.toISOString().split('T')[0];
-    },
-
-    // ── marcar como pago ─────────────────────────────────────
-    async marcarPago(id, dia, alunoId, valor) {
-        const confirmed = await confirmAction('Confirmar pagamento desta mensalidade?');
+    async toggleAtivo(id, ativoAtual) {
+        const novoStatus = !ativoAtual;
+        const confirmed = await confirmAction(
+            novoStatus
+                ? 'Reativar este pacote? Ele voltará a aparecer para seleção na edição de alunos.'
+                : 'Desativar este pacote? Ele deixará de aparecer para seleção em novos alunos (alunos já vinculados não são afetados).'
+        );
         if (!confirmed) return;
 
-        const { error } = await supabase
-            .from('financeiro')
-            .update({ status: 'pago', pago_em: new Date().toISOString().split('T')[0] })
-            .eq('id', id);
-
+        const { error } = await supabase.from('pacotes').update({ ativo: novoStatus }).eq('id', id);
         if (error) return showToast(error.message, 'error');
 
-        await auditLog('COBRANCA_PAGA', 'financeiro', id, { status: 'pago' });
-
-        // Gera automaticamente a mensalidade do próximo mês
-        if (dia && alunoId) {
-            const proximoVenc = this._calcProximoVencimento(dia);
-            const { error: errProx } = await supabase.from('financeiro').insert({
-                aluno_id:       alunoId,
-                descricao:      'Mensalidade',
-                valor:          valor,
-                vencimento:     proximoVenc,
-                recorrente:     true,
-                dia_vencimento: dia,
-                created_by:     AppState.userProfile.id
-            });
-            if (!errProx) {
-                showToast('Pagamento registrado e próximo mês gerado automaticamente ♻', 'success');
-            } else {
-                showToast('Pagamento registrado (erro ao gerar próximo mês)', 'warning');
-            }
-        } else {
-            showToast('Pagamento registrado', 'success');
-        }
-
-        await this._loadList();
-    },
-
-    // ── excluir ───────────────────────────────────────────────
-    async deletar(id) {
-        const confirmed = await confirmAction('Excluir esta mensalidade permanentemente?');
-        if (!confirmed) return;
-
-        const { error } = await supabase.from('financeiro').delete().eq('id', id);
-        if (error) return showToast(error.message, 'error');
-
-        showToast('Mensalidade excluída', 'success');
-        await this._loadList();
+        await auditLog(novoStatus ? 'PACOTE_ATIVADO' : 'PACOTE_DESATIVADO', 'pacotes', id, { ativo: novoStatus });
+        showToast(novoStatus ? 'Pacote ativado' : 'Pacote desativado', 'success');
+        await this.loadList();
     }
 };

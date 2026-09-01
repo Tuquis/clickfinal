@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS public.alunos_info (
     telefone         TEXT    NOT NULL,
     aulas_disponiveis INTEGER NOT NULL DEFAULT 0 CHECK (aulas_disponiveis >= 0),
     telefone_aluno   TEXT,
+    pacote_nome      TEXT,
+    pacote_valor     NUMERIC(10,2) CHECK (pacote_valor >= 0),
+    dia_vencimento   INTEGER CHECK (dia_vencimento BETWEEN 1 AND 31),
     created_at       TIMESTAMPTZ DEFAULT NOW(),
     updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
@@ -190,21 +193,23 @@ CREATE TABLE IF NOT EXISTS public.atividades (
     updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public.financeiro (
-    id              UUID    PRIMARY KEY DEFAULT uuid_generate_v4(),
-    aluno_id        UUID    NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
-    descricao       TEXT    NOT NULL,
-    valor           NUMERIC(10,2) NOT NULL CHECK (valor > 0),
-    vencimento      DATE    NOT NULL,
-    status          TEXT    NOT NULL DEFAULT 'pendente'
-        CHECK (status IN ('pendente','pago','atrasado')),
-    pago_em         TIMESTAMPTZ,
-    recorrente      BOOLEAN DEFAULT false,
-    dia_vencimento  INTEGER CHECK (dia_vencimento BETWEEN 1 AND 31),
-    created_by      UUID    REFERENCES public.usuarios(id),
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
+-- Catálogo de pacotes (nome + valor), gerenciado na aba Financeiro.
+-- Selecionado no modal de edição de aluno (Usuários) em vez de digitação livre.
+CREATE TABLE IF NOT EXISTS public.pacotes (
+    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    nome       TEXT NOT NULL,
+    valor      NUMERIC(10,2) NOT NULL CHECK (valor >= 0),
+    ativo      BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- alunos_info referencia o pacote escolhido (nome/valor ficam também
+-- copiados em pacote_nome/pacote_valor, que não mudam se o pacote for editado depois)
+ALTER TABLE public.alunos_info
+    ADD COLUMN IF NOT EXISTS pacote_id UUID REFERENCES public.pacotes(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_alunos_info_pacote ON public.alunos_info(pacote_id);
 
 CREATE TABLE IF NOT EXISTS public.observacoes_psico (
     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -388,12 +393,12 @@ CREATE OR REPLACE TRIGGER trg_cronograma_tarefas_updated_at
     BEFORE UPDATE ON public.cronograma_tarefas
     FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
 
-CREATE OR REPLACE TRIGGER trg_financeiro_updated_at
-    BEFORE UPDATE ON public.financeiro
-    FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
-
 CREATE OR REPLACE TRIGGER trg_observacoes_updated_at
     BEFORE UPDATE ON public.observacoes_psico
+    FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
+
+CREATE OR REPLACE TRIGGER trg_pacotes_updated_at
+    BEFORE UPDATE ON public.pacotes
     FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
 
 -- Ao salvar relatório: marca aula como realizada, decrementa aluno, incrementa professor
@@ -448,24 +453,6 @@ CREATE OR REPLACE TRIGGER trg_after_relatorio_insert
     AFTER INSERT ON public.relatorios
     FOR EACH ROW EXECUTE FUNCTION public.fn_after_relatorio_insert();
 
--- Financeiro: marca pago_em e detecta vencidos automaticamente
-CREATE OR REPLACE FUNCTION public.fn_financeiro_status()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.status = 'pago' AND OLD.status != 'pago' THEN
-        NEW.pago_em = NOW();
-    END IF;
-    IF NEW.status = 'pendente' AND NEW.vencimento < CURRENT_DATE THEN
-        NEW.status = 'atrasado';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER trg_financeiro_status
-    BEFORE INSERT OR UPDATE ON public.financeiro
-    FOR EACH ROW EXECUTE FUNCTION public.fn_financeiro_status();
-
 -- Tarefa concluída: registra timestamp
 CREATE OR REPLACE FUNCTION public.fn_tarefa_concluida()
 RETURNS TRIGGER AS $$
@@ -511,20 +498,6 @@ CREATE OR REPLACE TRIGGER trg_audit_agenda
     AFTER INSERT OR UPDATE ON public.agenda_meet
     FOR EACH ROW EXECUTE FUNCTION public.fn_audit_agenda();
 
--- Job manual/periódico: marca financeiros vencidos como atrasados
-CREATE OR REPLACE FUNCTION public.fn_atualizar_financeiros_vencidos()
-RETURNS INTEGER AS $$
-DECLARE v_count INTEGER;
-BEGIN
-    UPDATE public.financeiro
-    SET status = 'atrasado', updated_at = NOW()
-    WHERE status = 'pendente' AND vencimento < CURRENT_DATE;
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-    RETURN v_count;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-
 -- ══════════════════════════════════════════════════════════════
 -- 6. ROW LEVEL SECURITY — ATIVAR EM TODAS AS TABELAS
 -- ══════════════════════════════════════════════════════════════
@@ -538,8 +511,8 @@ ALTER TABLE public.relatorios         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cronograma         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cronograma_tarefas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.atividades         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.financeiro         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.observacoes_psico  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pacotes            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mensagens          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mensagens_diretas  ENABLE ROW LEVEL SECURITY;
@@ -760,21 +733,6 @@ CREATE POLICY "atividades_delete" ON public.atividades FOR DELETE
         OR (public.get_user_role() = 'professor' AND professor_id = public.get_user_id())
     );
 
--- financeiro
-DROP POLICY IF EXISTS "financeiro_select" ON public.financeiro;
-DROP POLICY IF EXISTS "financeiro_insert" ON public.financeiro;
-DROP POLICY IF EXISTS "financeiro_update" ON public.financeiro;
-DROP POLICY IF EXISTS "financeiro_delete" ON public.financeiro;
-
-CREATE POLICY "financeiro_select" ON public.financeiro FOR SELECT
-    USING (public.get_user_role() = 'admin' OR aluno_id = public.get_user_id());
-CREATE POLICY "financeiro_insert" ON public.financeiro FOR INSERT
-    WITH CHECK (public.get_user_role() = 'admin');
-CREATE POLICY "financeiro_update" ON public.financeiro FOR UPDATE
-    USING (public.get_user_role() = 'admin');
-CREATE POLICY "financeiro_delete" ON public.financeiro FOR DELETE
-    USING (public.get_user_role() = 'admin');
-
 -- observacoes_psico
 DROP POLICY IF EXISTS "observacoes_select" ON public.observacoes_psico;
 DROP POLICY IF EXISTS "observacoes_insert" ON public.observacoes_psico;
@@ -798,6 +756,21 @@ CREATE POLICY "observacoes_delete" ON public.observacoes_psico FOR DELETE
         public.get_user_role() = 'admin'
         OR (public.get_user_role() = 'psicopedagoga' AND psico_id = public.get_user_id())
     );
+
+-- pacotes
+DROP POLICY IF EXISTS "pacotes_select" ON public.pacotes;
+DROP POLICY IF EXISTS "pacotes_insert" ON public.pacotes;
+DROP POLICY IF EXISTS "pacotes_update" ON public.pacotes;
+DROP POLICY IF EXISTS "pacotes_delete" ON public.pacotes;
+
+CREATE POLICY "pacotes_select" ON public.pacotes FOR SELECT
+    USING (public.get_user_role() = 'admin');
+CREATE POLICY "pacotes_insert" ON public.pacotes FOR INSERT
+    WITH CHECK (public.get_user_role() = 'admin');
+CREATE POLICY "pacotes_update" ON public.pacotes FOR UPDATE
+    USING (public.get_user_role() = 'admin');
+CREATE POLICY "pacotes_delete" ON public.pacotes FOR DELETE
+    USING (public.get_user_role() = 'admin');
 
 -- audit_log
 DROP POLICY IF EXISTS "audit_select" ON public.audit_log;
@@ -1010,14 +983,9 @@ SELECT
         WHERE role = 'professor' AND ativo = true)                      AS total_professores,
     (SELECT COUNT(*) FROM public.agenda_meet
         WHERE data = CURRENT_DATE AND status = 'agendada')              AS aulas_hoje,
-    (SELECT COALESCE(SUM(valor), 0) FROM public.financeiro
-        WHERE status = 'pago'
-          AND DATE_TRUNC('month', pago_em) = DATE_TRUNC('month', NOW())) AS receita_mes,
     (SELECT COUNT(*) FROM public.cronograma_tarefas
         WHERE status = 'concluida'
           AND DATE_TRUNC('week', concluida_em) = DATE_TRUNC('week', NOW())) AS tarefas_concluidas_semana,
-    (SELECT COUNT(*) FROM public.financeiro
-        WHERE status = 'atrasado')                                       AS cobrancas_atrasadas,
     (SELECT COUNT(*) FROM public.relatorios
         WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', NOW())) AS relatorios_mes;
 
@@ -1085,27 +1053,6 @@ LEFT JOIN public.alunos_info ai ON ai.usuario_id = a.aluno_id
 LEFT JOIN public.relatorios   r  ON r.agenda_id  = a.id;
 
 GRANT SELECT ON public.v_agenda_completa TO authenticated, anon;
-
--- Financeiro com nome do aluno + campos de recorrência
-DROP VIEW IF EXISTS public.v_financeiro_completo;
-CREATE VIEW public.v_financeiro_completo AS
-SELECT
-    f.id,
-    f.descricao,
-    f.valor,
-    f.vencimento,
-    f.status,
-    f.pago_em,
-    f.created_at,
-    f.recorrente,
-    f.dia_vencimento,
-    u.nome AS aluno_nome,
-    u.id   AS aluno_id
-FROM public.financeiro f
-JOIN public.usuarios u ON u.id = f.aluno_id;
-
-GRANT SELECT ON public.v_financeiro_completo TO authenticated, anon;
-
 
 -- ══════════════════════════════════════════════════════════════
 -- 9. FUNÇÕES AUXILIARES
@@ -1219,8 +1166,6 @@ CREATE INDEX IF NOT EXISTS idx_agenda_data                ON public.agenda_meet(
 CREATE INDEX IF NOT EXISTS idx_relatorios_agenda          ON public.relatorios(agenda_id);
 CREATE INDEX IF NOT EXISTS idx_relatorios_aluno           ON public.relatorios(aluno_id);
 CREATE INDEX IF NOT EXISTS idx_cronograma_aluno           ON public.cronograma(aluno_id);
-CREATE INDEX IF NOT EXISTS idx_financeiro_aluno           ON public.financeiro(aluno_id);
-CREATE INDEX IF NOT EXISTS idx_financeiro_status          ON public.financeiro(status);
 CREATE INDEX IF NOT EXISTS idx_observacoes_aluno          ON public.observacoes_psico(aluno_id);
 CREATE INDEX IF NOT EXISTS idx_audit_usuario              ON public.audit_log(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_audit_tabela               ON public.audit_log(tabela);
@@ -1235,10 +1180,6 @@ CREATE INDEX IF NOT EXISTS idx_agenda_lembrete_whatsapp_10min
     ON public.agenda_meet(data, status, lembrete_whatsapp_10min_enviado, horario);
 CREATE INDEX IF NOT EXISTS idx_agenda_lembrete_whatsapp_prof
     ON public.agenda_meet(data, status, lembrete_whatsapp_prof_enviado, horario);
-
--- Financeiro recorrente
-CREATE INDEX IF NOT EXISTS idx_financeiro_recorrente
-    ON public.financeiro(recorrente) WHERE recorrente = true;
 
 -- Chat
 CREATE INDEX IF NOT EXISTS idx_mensagens_agenda

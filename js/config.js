@@ -54,13 +54,6 @@ var STATUS_AULA = {
     cancelada: { label: 'Cancelada', class: 'badge-danger' }
 };
 
-// Status financeiro
-var STATUS_FINANCEIRO = {
-    pendente: { label: 'Pendente', class: 'badge-warning' },
-    pago: { label: 'Pago', class: 'badge-success' },
-    atrasado: { label: 'Atrasado', class: 'badge-danger' }
-};
-
 // Categorias psicopedagógicas
 var CATEGORIAS_PSICO = {
     geral: 'Geral',

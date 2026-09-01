@@ -39,26 +39,6 @@ Modules.Dashboard = {
             return expiry >= _now;
         }).slice(0, 5);
 
-        const { data: cobrancasAtrasadas } = await supabase
-            .from('v_financeiro_completo')
-            .select('*')
-            .eq('status', 'atrasado')
-            .limit(5);
-
-        const hojeISO = todayISO();
-        const limiteVencer = new Date();
-        limiteVencer.setDate(limiteVencer.getDate() + 3);
-        const limiteVencerISO = limiteVencer.toISOString().split('T')[0];
-
-        const { data: pagamentosAVencer, count: totalAVencer } = await supabase
-            .from('v_financeiro_completo')
-            .select('*', { count: 'exact' })
-            .eq('status', 'pendente')
-            .gte('vencimento', hojeISO)
-            .lte('vencimento', limiteVencerISO)
-            .order('vencimento', { ascending: true })
-            .limit(8);
-
         const alertasCronograma = await Modules.Cronograma.carregarResumoAlertas();
 
         renderContent(`
@@ -68,65 +48,36 @@ Modules.Dashboard = {
             </div>
 
             ${Modules.Dashboard._alertaCronogramaHtml(alertasCronograma)}
-            ${Modules.Dashboard._alertaPagamentosVencerHtml(pagamentosAVencer, totalAVencer)}
 
             <div class="stats-grid">
                 ${Modules.Dashboard._statCard('Alunos Ativos', stats?.total_alunos || 0, '🎓', 'stat-blue')}
                 ${Modules.Dashboard._statCard('Professores', stats?.total_professores || 0, '👨‍🏫', 'stat-green')}
                 ${Modules.Dashboard._statCard('Aulas Hoje', stats?.aulas_hoje || 0, '📅', 'stat-purple')}
-                ${Modules.Dashboard._statCard('Receita do Mês', fmt.currency(stats?.receita_mes || 0), '💰', 'stat-gold')}
                 ${Modules.Dashboard._statCard('Tarefas Concluídas', stats?.tarefas_concluidas_semana || 0, '✓', 'stat-teal')}
-                ${Modules.Dashboard._statCard('Cobranças Atrasadas', stats?.cobrancas_atrasadas || 0, '⚠', 'stat-red')}
             </div>
 
-            <div class="dashboard-grid">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Próximas Aulas</h3>
-                        <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
-                    </div>
-                    <div class="card-body">
-                        ${proximasAulas?.length
-                            ? `<table class="table">
-                                <thead><tr><th>Data</th><th>Horário</th><th>Aluno</th><th>Professor</th></tr></thead>
-                                <tbody>
-                                    ${proximasAulas.map(a => `
-                                        <tr>
-                                            <td>${fmt.date(a.data)}</td>
-                                            <td>${fmt.time(a.horario)}</td>
-                                            <td>${escapeHtml(a.aluno_nome)}</td>
-                                            <td>${escapeHtml(a.professor_nome)}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>`
-                            : emptyState('Nenhuma aula agendada')
-                        }
-                    </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>Próximas Aulas</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
                 </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Cobranças Atrasadas</h3>
-                        <button class="btn btn-ghost btn-sm" onclick="Router.navigate('financeiro')">Ver todas</button>
-                    </div>
-                    <div class="card-body">
-                        ${cobrancasAtrasadas?.length
-                            ? `<table class="table">
-                                <thead><tr><th>Aluno</th><th>Valor</th><th>Vencimento</th></tr></thead>
-                                <tbody>
-                                    ${cobrancasAtrasadas.map(c => `
-                                        <tr>
-                                            <td>${escapeHtml(c.aluno_nome)}</td>
-                                            <td>${fmt.currency(c.valor)}</td>
-                                            <td class="text-danger">${fmt.date(c.vencimento)}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>`
-                            : emptyState('Nenhuma cobrança atrasada')
-                        }
-                    </div>
+                <div class="card-body">
+                    ${proximasAulas?.length
+                        ? `<table class="table">
+                            <thead><tr><th>Data</th><th>Horário</th><th>Aluno</th><th>Professor</th></tr></thead>
+                            <tbody>
+                                ${proximasAulas.map(a => `
+                                    <tr>
+                                        <td>${fmt.date(a.data)}</td>
+                                        <td>${fmt.time(a.horario)}</td>
+                                        <td>${escapeHtml(a.aluno_nome)}</td>
+                                        <td>${escapeHtml(a.professor_nome)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>`
+                        : emptyState('Nenhuma aula agendada')
+                    }
                 </div>
             </div>
         `);
@@ -496,44 +447,6 @@ Modules.Dashboard = {
 
     async _verCronogramaAluno(alunoId) {
         await Router.navigate('cronograma', { alunoId });
-    },
-
-    // ── Alerta: pagamentos a vencer nos próximos dias (admin) ──
-    _alertaPagamentosVencerHtml(cobrancas, total) {
-        if (!cobrancas || cobrancas.length === 0) return '';
-
-        const restantes = Math.max((total || cobrancas.length) - cobrancas.length, 0);
-
-        const itens = cobrancas.map(c => `
-            <div class="notif-msg-item">
-                <div class="notif-msg-avatar">🟡</div>
-                <div class="notif-msg-body">
-                    <div class="notif-msg-de">
-                        <strong>${escapeHtml(c.aluno_nome)}</strong>
-                        <span class="notif-msg-count">${escapeHtml(c.descricao)}</span>
-                    </div>
-                    <div class="notif-msg-trecho">
-                        Vence em ${fmt.date(c.vencimento)} — <strong>${fmt.currency(c.valor)}</strong>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-
-        return `
-            <div class="card notif-msg-card" style="border-left:3px solid var(--color-yellow)">
-                <div class="card-header notif-msg-header">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="notif-msg-dot" style="background:var(--color-yellow)"></span>
-                        <h3>Pagamentos a vencer</h3>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('financeiro')">Ver todas</button>
-                </div>
-                <div class="notif-msg-list">
-                    ${itens}
-                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} pagamento${restantes > 1 ? 's' : ''} a vencer…</p>` : ''}
-                </div>
-            </div>
-        `;
     },
 
     _respostasHtml(respostas) {

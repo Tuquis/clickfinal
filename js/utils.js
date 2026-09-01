@@ -31,8 +31,7 @@ const fmt = {
         return t.substring(0, 5);
     },
     role: (r) => ROLE_LABELS[r] || r,
-    status_aula: (s) => STATUS_AULA[s] || { label: s, class: 'badge-secondary' },
-    status_fin: (s) => STATUS_FINANCEIRO[s] || { label: s, class: 'badge-secondary' }
+    status_aula: (s) => STATUS_AULA[s] || { label: s, class: 'badge-secondary' }
 };
 
 // ============================================================

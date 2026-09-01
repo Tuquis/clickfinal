@@ -1379,6 +1379,8 @@ Modules.Agenda = {
                 const { error } = await supabase.from('agenda_meet').update(payload).eq('id', id);
                 if (error) throw error;
                 showToast('Aula atualizada com sucesso', 'success');
+                // Reenvia o aviso ao professor com o horário confirmado após a edição
+                Modules.Agenda._notificarProfessor(id).catch(console.warn);
             } else {
                 const { data: inserted, error } = await supabase
                     .from('agenda_meet').insert(payload).select('id').single();
@@ -1714,7 +1716,11 @@ Modules.Agenda = {
         }
     },
 
-    // ── notificação via WhatsApp (Z-API — Edge Function) ──────
+    // ── notificação via WhatsApp (API oficial Meta — Edge Function) ──────
+    // Chamada tanto ao criar quanto ao editar uma aula: a function busca os
+    // dados atuais da aula no banco, então o professor sempre recebe o
+    // horário confirmado mais recente (a mensagem de erro fica genérica
+    // de propósito pra fazer sentido nos dois casos).
     async _notificarProfessor(agendaId) {
         if (!agendaId) return;
         try {
@@ -1723,15 +1729,15 @@ Modules.Agenda = {
             });
             if (error) {
                 console.warn('Notificação WhatsApp falhou:', error.message);
-                showToast('Aula agendada, mas o aviso por WhatsApp ao professor falhou.', 'warning', 6000);
+                showToast('O aviso por WhatsApp ao professor falhou.', 'warning', 6000);
             } else if (data?.skipped === 'sem_telefone') {
-                showToast('Aula agendada, mas o professor não tem telefone cadastrado — aviso por WhatsApp não enviado.', 'warning', 6000);
+                showToast('O professor não tem telefone cadastrado — aviso por WhatsApp não enviado.', 'warning', 6000);
             } else {
                 console.log('WhatsApp de agendamento enviado ao professor');
             }
         } catch (e) {
             console.warn('Notificação WhatsApp falhou:', e?.message || e);
-            showToast('Aula agendada, mas o aviso por WhatsApp ao professor falhou.', 'warning', 6000);
+            showToast('O aviso por WhatsApp ao professor falhou.', 'warning', 6000);
         }
     },
 
