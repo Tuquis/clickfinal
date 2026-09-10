@@ -39,7 +39,11 @@ Modules.Dashboard = {
             return expiry >= _now;
         }).slice(0, 5);
 
-        const alertasCronograma = await Modules.Cronograma.carregarResumoAlertas();
+        const [alertasCronograma, alertasVencimento, alertasDespesas] = await Promise.all([
+            Modules.Cronograma.carregarResumoAlertas(),
+            Modules.Financeiro.carregarAlunosVencendo(),
+            Modules.Financeiro.carregarDespesasVencendo()
+        ]);
 
         renderContent(`
             <div class="page-header">
@@ -48,6 +52,8 @@ Modules.Dashboard = {
             </div>
 
             ${Modules.Dashboard._alertaCronogramaHtml(alertasCronograma)}
+            ${Modules.Dashboard._alertaVencimentosHtml(alertasVencimento)}
+            ${Modules.Dashboard._alertaDespesasVencendoHtml(alertasDespesas)}
 
             <div class="stats-grid">
                 ${Modules.Dashboard._statCard('Alunos Ativos', stats?.total_alunos || 0, '🎓', 'stat-blue')}
@@ -445,8 +451,98 @@ Modules.Dashboard = {
         `;
     },
 
+    // ── Alerta: mensalidades perto de vencer ou já vencidas (admin) ──
+    _alertaVencimentosHtml(alertas) {
+        if (!alertas || alertas.length === 0) return '';
+
+        const LIMITE = 8;
+        const visiveis = alertas.slice(0, LIMITE);
+        const restantes = alertas.length - visiveis.length;
+
+        const itens = visiveis.map(a => {
+            const atrasado = a.diffDias < 0;
+            const texto = atrasado
+                ? `Vencido há ${Math.abs(a.diffDias)} dia${Math.abs(a.diffDias) > 1 ? 's' : ''}`
+                : a.diffDias === 0 ? 'Vence hoje' : `Vence em ${a.diffDias} dia${a.diffDias > 1 ? 's' : ''}`;
+
+            return `
+                <div class="notif-msg-item">
+                    <div class="notif-msg-avatar">${atrasado ? '🔴' : '🟡'}</div>
+                    <div class="notif-msg-body">
+                        <div class="notif-msg-de">
+                            <strong>${escapeHtml(a.nome)}</strong>
+                            <span class="notif-msg-count">${a.pacoteValor != null ? fmt.currency(a.pacoteValor) : ''}</span>
+                        </div>
+                        <div class="notif-msg-trecho">Dia ${a.diaVencimento} — ${texto}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="card notif-msg-card" style="border-left:3px solid var(--color-yellow)">
+                <div class="card-header notif-msg-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="notif-msg-dot" style="background:var(--color-yellow)"></span>
+                        <h3>Alunos com mensalidade perto de vencer</h3>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('financeiro')">Ver todos</button>
+                </div>
+                <div class="notif-msg-list">
+                    ${itens}
+                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aluno${restantes > 1 ? 's' : ''}…</p>` : ''}
+                </div>
+            </div>
+        `;
+    },
+
     async _verCronogramaAluno(alunoId) {
         await Router.navigate('cronograma', { alunoId });
+    },
+
+    // ── Alerta: despesas perto de vencer ou já vencidas (admin) ──
+    _alertaDespesasVencendoHtml(alertas) {
+        if (!alertas || alertas.length === 0) return '';
+
+        const LIMITE = 8;
+        const visiveis = alertas.slice(0, LIMITE);
+        const restantes = alertas.length - visiveis.length;
+
+        const itens = visiveis.map(a => {
+            const atrasada = a.diffDias < 0;
+            const texto = atrasada
+                ? `Vencida há ${Math.abs(a.diffDias)} dia${Math.abs(a.diffDias) > 1 ? 's' : ''}`
+                : a.diffDias === 0 ? 'Vence hoje' : `Vence em ${a.diffDias} dia${a.diffDias > 1 ? 's' : ''}`;
+
+            return `
+                <div class="notif-msg-item">
+                    <div class="notif-msg-avatar">${atrasada ? '🔴' : '🟡'}</div>
+                    <div class="notif-msg-body">
+                        <div class="notif-msg-de">
+                            <strong>${escapeHtml(a.descricao)}</strong>
+                            <span class="notif-msg-count">${fmt.currency(a.valor)}</span>
+                        </div>
+                        <div class="notif-msg-trecho">${texto}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="card notif-msg-card" style="border-left:3px solid var(--color-red)">
+                <div class="card-header notif-msg-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="notif-msg-dot" style="background:var(--color-red)"></span>
+                        <h3>Despesas perto de vencer</h3>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('financeiro')">Ver todas</button>
+                </div>
+                <div class="notif-msg-list">
+                    ${itens}
+                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} despesa${restantes > 1 ? 's' : ''}…</p>` : ''}
+                </div>
+            </div>
+        `;
     },
 
     _respostasHtml(respostas) {

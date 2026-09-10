@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS public.alunos_info (
     pacote_nome      TEXT,
     pacote_valor     NUMERIC(10,2) CHECK (pacote_valor >= 0),
     dia_vencimento   INTEGER CHECK (dia_vencimento BETWEEN 1 AND 31),
+    ultimo_pagamento_em TIMESTAMPTZ,
+    forma_pagamento  TEXT NOT NULL DEFAULT 'pix' CHECK (forma_pagamento IN ('pix','cartao')),
     created_at       TIMESTAMPTZ DEFAULT NOW(),
     updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
@@ -210,6 +212,89 @@ ALTER TABLE public.alunos_info
     ADD COLUMN IF NOT EXISTS pacote_id UUID REFERENCES public.pacotes(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_alunos_info_pacote ON public.alunos_info(pacote_id);
+
+-- Histórico de pagamentos dos alunos (ledger — nunca sobrescrito, uma linha
+-- por mês pago). É a base do Fluxo de Caixa: alunos_info.ultimo_pagamento_em
+-- ainda existe mas não é mais a fonte de verdade, ficou como campo legado.
+CREATE TABLE IF NOT EXISTS public.pagamentos_alunos (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    aluno_id        UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    valor           NUMERIC(10,2) NOT NULL CHECK (valor >= 0),
+    forma_pagamento TEXT NOT NULL CHECK (forma_pagamento IN ('pix','cartao')),
+    -- Cartão só cai na conta depois de um período (repasse da maquininha/recebedor);
+    -- pix é sempre imediato. NULL = registro antigo ou pix, tratado como já repassado.
+    data_repasse    DATE,
+    mes_referencia  DATE NOT NULL,
+    registrado_por  UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (aluno_id, mes_referencia)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pagamentos_alunos_mes   ON public.pagamentos_alunos(mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_pagamentos_alunos_aluno ON public.pagamentos_alunos(aluno_id);
+
+-- Despesas: catálogo (definição de cada despesa, recorrente ou pontual)
+-- + ledger de pagamentos (mesmo padrão de pagamentos_alunos).
+CREATE TABLE IF NOT EXISTS public.despesas (
+    id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    descricao             TEXT NOT NULL,
+    categoria             TEXT NOT NULL CHECK (categoria IN ('aluguel','ferramentas','marketing','impostos','salarios','outros')),
+    valor                 NUMERIC(10,2) NOT NULL CHECK (valor >= 0),
+    forma_pagamento       TEXT NOT NULL DEFAULT 'pix' CHECK (forma_pagamento IN ('pix','cartao')),
+    recorrente            BOOLEAN NOT NULL DEFAULT false,
+    dia_vencimento        INTEGER CHECK (dia_vencimento BETWEEN 1 AND 31),
+    data_vencimento_unica DATE,
+    ativo                 BOOLEAN NOT NULL DEFAULT true,
+    created_at            TIMESTAMPTZ DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ DEFAULT NOW(),
+    CHECK (
+        (recorrente = true  AND dia_vencimento IS NOT NULL) OR
+        (recorrente = false AND data_vencimento_unica IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS public.despesas_pagamentos (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    despesa_id      UUID NOT NULL REFERENCES public.despesas(id) ON DELETE CASCADE,
+    valor           NUMERIC(10,2) NOT NULL CHECK (valor >= 0),
+    forma_pagamento TEXT NOT NULL CHECK (forma_pagamento IN ('pix','cartao')),
+    mes_referencia  DATE NOT NULL,
+    registrado_por  UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (despesa_id, mes_referencia)
+);
+
+CREATE INDEX IF NOT EXISTS idx_despesas_pagamentos_mes     ON public.despesas_pagamentos(mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_despesas_pagamentos_despesa ON public.despesas_pagamentos(despesa_id);
+
+-- Ledger de pagamento aos professores (mesmo padrão de pagamentos_alunos).
+-- "Finanças dos Professores" calcula ao vivo quanto pagar (aulas do mês);
+-- essa tabela é o registro de que o pagamento realmente aconteceu.
+CREATE TABLE IF NOT EXISTS public.pagamentos_professores (
+    id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    professor_id                    UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    valor                           NUMERIC(10,2) NOT NULL CHECK (valor >= 0),
+    aulas_contabilizadas            INTEGER NOT NULL DEFAULT 0,
+    aulas_sem_aluno_contabilizadas  INTEGER NOT NULL DEFAULT 0,
+    mes_referencia                  DATE NOT NULL,
+    registrado_por                  UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    created_at                      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (professor_id, mes_referencia)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pagamentos_professores_mes       ON public.pagamentos_professores(mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_pagamentos_professores_professor ON public.pagamentos_professores(professor_id);
+
+-- Ajustes manuais do saldo em conta (positivo ou negativo), pra reconciliar
+-- com o extrato real do banco quando o calculado (entradas repassadas -
+-- despesas - professores) não bate.
+CREATE TABLE IF NOT EXISTS public.saldo_ajustes (
+    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    valor          NUMERIC(10,2) NOT NULL,
+    motivo         TEXT NOT NULL,
+    registrado_por UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+    created_at     TIMESTAMPTZ DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS public.observacoes_psico (
     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -401,6 +486,10 @@ CREATE OR REPLACE TRIGGER trg_pacotes_updated_at
     BEFORE UPDATE ON public.pacotes
     FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
 
+CREATE OR REPLACE TRIGGER trg_despesas_updated_at
+    BEFORE UPDATE ON public.despesas
+    FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
+
 -- Ao salvar relatório: marca aula como realizada, decrementa aluno, incrementa professor
 CREATE OR REPLACE FUNCTION public.fn_after_relatorio_insert()
 RETURNS TRIGGER AS $$
@@ -513,6 +602,11 @@ ALTER TABLE public.cronograma_tarefas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.atividades         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.observacoes_psico  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pacotes            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pagamentos_alunos  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.despesas            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.despesas_pagamentos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pagamentos_professores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.saldo_ajustes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mensagens          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mensagens_diretas  ENABLE ROW LEVEL SECURITY;
@@ -771,6 +865,53 @@ CREATE POLICY "pacotes_update" ON public.pacotes FOR UPDATE
     USING (public.get_user_role() = 'admin');
 CREATE POLICY "pacotes_delete" ON public.pacotes FOR DELETE
     USING (public.get_user_role() = 'admin');
+
+-- pagamentos_alunos (ledger — sem policy de UPDATE de propósito: correção é
+-- feita apagando e inserindo de novo, mantendo o histórico sempre íntegro)
+DROP POLICY IF EXISTS "pagamentos_alunos_select" ON public.pagamentos_alunos;
+DROP POLICY IF EXISTS "pagamentos_alunos_insert" ON public.pagamentos_alunos;
+DROP POLICY IF EXISTS "pagamentos_alunos_delete" ON public.pagamentos_alunos;
+
+CREATE POLICY "pagamentos_alunos_select" ON public.pagamentos_alunos FOR SELECT
+    USING (public.get_user_role() = 'admin');
+CREATE POLICY "pagamentos_alunos_insert" ON public.pagamentos_alunos FOR INSERT
+    WITH CHECK (public.get_user_role() = 'admin');
+CREATE POLICY "pagamentos_alunos_delete" ON public.pagamentos_alunos FOR DELETE
+    USING (public.get_user_role() = 'admin');
+
+-- despesas
+DROP POLICY IF EXISTS "despesas_select" ON public.despesas;
+DROP POLICY IF EXISTS "despesas_insert" ON public.despesas;
+DROP POLICY IF EXISTS "despesas_update" ON public.despesas;
+DROP POLICY IF EXISTS "despesas_delete" ON public.despesas;
+CREATE POLICY "despesas_select" ON public.despesas FOR SELECT USING (public.get_user_role() = 'admin');
+CREATE POLICY "despesas_insert" ON public.despesas FOR INSERT WITH CHECK (public.get_user_role() = 'admin');
+CREATE POLICY "despesas_update" ON public.despesas FOR UPDATE USING (public.get_user_role() = 'admin');
+CREATE POLICY "despesas_delete" ON public.despesas FOR DELETE USING (public.get_user_role() = 'admin');
+
+-- despesas_pagamentos (ledger — sem policy de UPDATE, correção é apagar e reinserir)
+DROP POLICY IF EXISTS "despesas_pagamentos_select" ON public.despesas_pagamentos;
+DROP POLICY IF EXISTS "despesas_pagamentos_insert" ON public.despesas_pagamentos;
+DROP POLICY IF EXISTS "despesas_pagamentos_delete" ON public.despesas_pagamentos;
+CREATE POLICY "despesas_pagamentos_select" ON public.despesas_pagamentos FOR SELECT USING (public.get_user_role() = 'admin');
+CREATE POLICY "despesas_pagamentos_insert" ON public.despesas_pagamentos FOR INSERT WITH CHECK (public.get_user_role() = 'admin');
+CREATE POLICY "despesas_pagamentos_delete" ON public.despesas_pagamentos FOR DELETE USING (public.get_user_role() = 'admin');
+
+-- pagamentos_professores (ledger — sem policy de UPDATE, correção é apagar e reinserir)
+DROP POLICY IF EXISTS "pagamentos_professores_select" ON public.pagamentos_professores;
+DROP POLICY IF EXISTS "pagamentos_professores_insert" ON public.pagamentos_professores;
+DROP POLICY IF EXISTS "pagamentos_professores_delete" ON public.pagamentos_professores;
+CREATE POLICY "pagamentos_professores_select" ON public.pagamentos_professores FOR SELECT USING (public.get_user_role() = 'admin');
+CREATE POLICY "pagamentos_professores_insert" ON public.pagamentos_professores FOR INSERT WITH CHECK (public.get_user_role() = 'admin');
+CREATE POLICY "pagamentos_professores_delete" ON public.pagamentos_professores FOR DELETE USING (public.get_user_role() = 'admin');
+
+-- saldo_ajustes
+DROP POLICY IF EXISTS "saldo_ajustes_select" ON public.saldo_ajustes;
+DROP POLICY IF EXISTS "saldo_ajustes_insert" ON public.saldo_ajustes;
+DROP POLICY IF EXISTS "saldo_ajustes_delete" ON public.saldo_ajustes;
+CREATE POLICY "saldo_ajustes_select" ON public.saldo_ajustes FOR SELECT USING (public.get_user_role() = 'admin');
+CREATE POLICY "saldo_ajustes_insert" ON public.saldo_ajustes FOR INSERT WITH CHECK (public.get_user_role() = 'admin');
+CREATE POLICY "saldo_ajustes_delete" ON public.saldo_ajustes FOR DELETE USING (public.get_user_role() = 'admin');
 
 -- audit_log
 DROP POLICY IF EXISTS "audit_select" ON public.audit_log;
