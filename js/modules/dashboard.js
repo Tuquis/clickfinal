@@ -39,10 +39,11 @@ Modules.Dashboard = {
             return expiry >= _now;
         }).slice(0, 5);
 
-        const [alertasCronograma, alertasVencimento, alertasDespesas] = await Promise.all([
+        const [alertasCronograma, alertasVencimento, alertasDespesas, alertasSemRelatorio] = await Promise.all([
             Modules.Cronograma.carregarResumoAlertas(),
             Modules.Financeiro.carregarAlunosVencendo(),
-            Modules.Financeiro.carregarDespesasVencendo()
+            Modules.Financeiro.carregarDespesasVencendo(),
+            Modules.Relatorios.carregarAulasSemRelatorio()
         ]);
 
         renderContent(`
@@ -51,6 +52,7 @@ Modules.Dashboard = {
                 <span class="page-subtitle">${new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' })}</span>
             </div>
 
+            ${Modules.Dashboard._alertaAulasSemRelatorioHtml(alertasSemRelatorio)}
             ${Modules.Dashboard._alertaCronogramaHtml(alertasCronograma)}
             ${Modules.Dashboard._alertaVencimentosHtml(alertasVencimento)}
             ${Modules.Dashboard._alertaDespesasVencendoHtml(alertasDespesas)}
@@ -540,6 +542,52 @@ Modules.Dashboard = {
                 <div class="notif-msg-list">
                     ${itens}
                     ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} despesa${restantes > 1 ? 's' : ''}…</p>` : ''}
+                </div>
+            </div>
+        `;
+    },
+
+    // ── Alerta: aula já dada há mais de 3h sem relatório emitido pelo professor (admin) ──
+    _alertaAulasSemRelatorioHtml(alertas) {
+        if (!alertas || alertas.length === 0) return '';
+
+        const LIMITE = 8;
+        const visiveis = alertas.slice(0, LIMITE);
+        const restantes = alertas.length - visiveis.length;
+
+        const itens = visiveis.map(a => {
+            const texto = a.horasAtraso >= 24
+                ? `Atrasado há ${Math.floor(a.horasAtraso / 24)} dia${Math.floor(a.horasAtraso / 24) > 1 ? 's' : ''}`
+                : `Atrasado há ${a.horasAtraso}h`;
+
+            return `
+                <div class="notif-msg-item">
+                    <div class="notif-msg-avatar">🔴</div>
+                    <div class="notif-msg-body">
+                        <div class="notif-msg-de">
+                            <strong>${escapeHtml(a.professorNome)}</strong>
+                            <span class="notif-msg-count">${texto}</span>
+                        </div>
+                        <div class="notif-msg-trecho">
+                            Aluno ${escapeHtml(a.alunoNome)} — aula de ${fmt.date(a.data)} às ${a.horario?.substring(0, 5)}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="card notif-msg-card" style="border-left:3px solid var(--color-red)">
+                <div class="card-header notif-msg-header">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="notif-msg-dot" style="background:var(--color-red)"></span>
+                        <h3>Relatórios pendentes</h3>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('relatorios')">Ver relatórios</button>
+                </div>
+                <div class="notif-msg-list">
+                    ${itens}
+                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aula${restantes > 1 ? 's' : ''}…</p>` : ''}
                 </div>
             </div>
         `;

@@ -655,15 +655,13 @@ Modules.Relatorios = {
 
             if (ins.error) throw ins.error;
 
-            // Incrementar saldo_aulas_dadas do professor
-            const piRes = await supabase.from('professores_info').select('saldo_aulas_dadas').eq('usuario_id', AppState.userProfile.id).single();
-            await supabase.from('professores_info').update({ saldo_aulas_dadas: (piRes.data?.saldo_aulas_dadas || 0) + 1 }).eq('usuario_id', AppState.userProfile.id);
-
-            // Decrementar aulas disponíveis do aluno
-            const aiRes = await supabase.from('alunos_info').select('aulas_disponiveis').eq('usuario_id', alunoId).single();
-            if ((aiRes.data?.aulas_disponiveis || 0) > 0) {
-                await supabase.from('alunos_info').update({ aulas_disponiveis: aiRes.data.aulas_disponiveis - 1 }).eq('usuario_id', alunoId);
-            }
+            // NÃO mexer aqui em saldo_aulas_dadas/aulas_disponiveis: o trigger
+            // fn_after_relatorio_insert (banco) já faz isso sozinho a cada INSERT
+            // em relatorios. Duplicar essa lógica no client foi exatamente o que
+            // causou o bug de contagem dupla (todo professor com o dobro de aulas
+            // registradas, todo aluno perdendo crédito em dobro) descoberto e
+            // corrigido em set/2026 — o bug tinha sido introduzido em mai/2026
+            // junto com este mesmo código que foi removido agora.
 
             showToast('Relatório salvo! Saldo do aluno decrementado.', 'success', 4000);
             closeModal('modal-validar-aula');
@@ -1248,28 +1246,11 @@ Modules.Relatorios = {
             });
             if (ins.error) throw ins.error;
 
-            // 2. Incrementar saldo_aulas_dadas e saldo_aulas_sem_aluno do professor
-            var piRes = await supabase
-                .from('professores_info')
-                .select('saldo_aulas_dadas, saldo_aulas_sem_aluno')
-                .eq('usuario_id', profId)
-                .single();
-            await supabase.from('professores_info').update({
-                saldo_aulas_dadas:      (piRes.data?.saldo_aulas_dadas      || 0) + 1,
-                saldo_aulas_sem_aluno:  (piRes.data?.saldo_aulas_sem_aluno  || 0) + 1
-            }).eq('usuario_id', profId);
-
-            // 3. Debitar saldo do aluno (igual a uma aula normal)
-            var aiRes = await supabase
-                .from('alunos_info')
-                .select('aulas_disponiveis')
-                .eq('usuario_id', alunoId)
-                .single();
-            if ((aiRes.data?.aulas_disponiveis || 0) > 0) {
-                await supabase.from('alunos_info').update({
-                    aulas_disponiveis: aiRes.data.aulas_disponiveis - 1
-                }).eq('usuario_id', alunoId);
-            }
+            // NÃO mexer aqui em saldo_aulas_dadas/saldo_aulas_sem_aluno/aulas_disponiveis:
+            // o trigger fn_after_relatorio_insert (banco) já cobre os 3 sozinho a cada
+            // INSERT em relatorios, inclusive quando sem_aluno = true. Duplicar essa
+            // lógica no client foi o que causou o bug de contagem dupla descoberto e
+            // corrigido em set/2026 — ver comentário equivalente em salvar() acima.
 
             await auditLog('AULA_SEM_ALUNO', 'relatorios', null, { alunoId });
             showToast('Aula sem aluno registrada. Saldo do aluno decrementado.', 'success', 4000);
@@ -1280,5 +1261,155 @@ Modules.Relatorios = {
         } finally {
             if (btn) btn.disabled = false;
         }
+    },
+
+    // Casa cada relatório (ordem crescente) com a aula MAIS RECENTE ainda
+    // não reivindicada que já tinha acontecido no instante em que o
+    // relatório foi salvo. Isso imita o comportamento real de um professor
+    // (reporta logo depois da aula que acabou de dar) — se só usássemos
+    // "o relatório mais antigo disponível", um professor que esquece de
+    // reportar a 1ª aula do dia mas reporta a 2ª corretamente faria esse
+    // relatório ser roubado pra "cobrir" a 1ª aula, deixando a 2ª (que foi
+    // reportada de verdade) aparecer erroneamente como pendente.
+    // aulasGrupo e reportsGrupo precisam estar ordenados por horário crescente.
+    _casarAulasComRelatorios(aulasGrupo, reportsGrupo) {
+        const aulaReivindicada   = new Array(aulasGrupo.length).fill(false);
+        const relatorioConsumido = new Array(reportsGrupo.length).fill(false);
+
+        reportsGrupo.forEach((r, ri) => {
+            let melhor = -1;
+            for (let i = 0; i < aulasGrupo.length && aulasGrupo[i]._dt <= r.ts; i++) {
+                if (!aulaReivindicada[i]) melhor = i;
+            }
+            if (melhor !== -1) {
+                aulaReivindicada[melhor] = true;
+                relatorioConsumido[ri] = true;
+            }
+        });
+
+        return { aulaReivindicada, relatorioConsumido };
+    },
+
+    // Busca TODAS as linhas de relatorios a partir de uma data, paginando de
+    // verdade — o Supabase corta qualquer consulta em exatamente 1000 linhas
+    // no servidor (confirmado via API: pedir mais não adianta, sempre volta
+    // no máximo 1000, com HTTP 206 avisando que é parcial). Sem paginar,
+    // qualquer tabela que passe de 1000 linhas começa a devolver resultado
+    // incompleto sem erro nenhum — foi exatamente isso que causou o bug de
+    // set/2026 nos saldos de aula.
+    async _fetchTodosRelatorios(desde) {
+        const PAGINA = 1000;
+        const MAX_PAGINAS = 500; // trava de segurança (500k linhas) — nunca deve ser atingida
+        let tudo = [];
+        let from = 0;
+        for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+            const { data, error } = await supabase
+                .from('relatorios')
+                .select('professor_id, aluno_id, created_at')
+                .gte('created_at', desde)
+                .order('created_at', { ascending: true })
+                .range(from, from + PAGINA - 1);
+            if (error || !data || !data.length) break;
+            tudo = tudo.concat(data);
+            if (data.length < PAGINA) break; // última página
+            from += PAGINA;
+        }
+        return tudo;
+    },
+
+    _agruparPor(lista, chaveFn) {
+        const grupos = {};
+        lista.forEach(item => {
+            const k = chaveFn(item);
+            (grupos[k] = grupos[k] || []).push(item);
+        });
+        return grupos;
+    },
+
+    // ── Usado pelo Dashboard (admin): aulas já dadas há mais de 3h cujo
+    // professor ainda não emitiu relatório. Relatório não guarda qual aula
+    // especificamente gerou ele (ver comentário no topo do arquivo), então
+    // a checagem é em 2 passadas:
+    //   1ª — casamento exato por par professor+aluno (caso normal).
+    //   2ª — só pras aulas que sobraram: casamento só por aluno (ignora o
+    //        professor), usando relatórios que a 1ª passada não consumiu.
+    //        Cobre o caso de reatribuição de professor (admin troca quem
+    //        dá a aula depois que o professor original já lançou o
+    //        relatório — aí ele fica "preso" no par antigo e nunca bateria
+    //        com o par novo se a checagem fosse só por professor+aluno).
+    async carregarAulasSemRelatorio() {
+        const agora = new Date();
+        const limiteMs = agora.getTime() - 3 * 60 * 60 * 1000;
+
+        const { data: aulas, error } = await supabase
+            .from('v_agenda_completa')
+            .select('id, data, horario, aluno_id, aluno_nome, professor_id, professor_nome, status')
+            .neq('status', 'cancelada')
+            .lte('data', todayISO());
+
+        if (error || !aulas?.length) return [];
+
+        const candidatas = aulas
+            .map(a => ({ ...a, _dt: new Date(a.data + 'T' + a.horario).getTime() }))
+            .filter(a => a._dt <= limiteMs)
+            .sort((a, b) => a._dt - b._dt);
+        if (!candidatas.length) return [];
+
+        const dataMinima = candidatas.reduce((min, a) => a.data < min ? a.data : min, candidatas[0].data);
+        // Paginado de verdade (não um .limit() alto): o Supabase corta TODA
+        // consulta em exatamente 1000 linhas no servidor, mesmo pedindo mais —
+        // confirmado testando direto na API (Range: 0-9999 devolveu só 1000,
+        // com HTTP 206 Partial Content). Um .limit(20000) não escapa disso.
+        // Sem paginar de verdade, relatórios reais somem da conta e aulas já
+        // reportadas aparecem aqui como pendentes por engano.
+        const relatoriosRaw = await this._fetchTodosRelatorios(dataMinima + 'T00:00:00');
+
+        const reports = (relatoriosRaw || [])
+            .map(r => ({ professor_id: r.professor_id, aluno_id: r.aluno_id, ts: new Date(r.created_at).getTime() }))
+            .sort((a, b) => a.ts - b.ts);
+
+        const aulaCoberta     = new Map(candidatas.map(a => [a.id, false]));
+        const reportConsumido = new Array(reports.length).fill(false);
+
+        // 1ª passada — par exato (professor_id + aluno_id)
+        const gruposExatos = this._agruparPor(candidatas, a => a.professor_id + '|' + a.aluno_id);
+        Object.entries(gruposExatos).forEach(([chave, aulasGrupo]) => {
+            const reportsComIndice = reports
+                .map((r, idx) => ({ r, idx }))
+                .filter(({ r }) => (r.professor_id + '|' + r.aluno_id) === chave)
+                .map(({ r, idx }) => ({ ts: r.ts, idx }));
+
+            const { aulaReivindicada, relatorioConsumido } = this._casarAulasComRelatorios(aulasGrupo, reportsComIndice);
+            aulasGrupo.forEach((a, i) => { if (aulaReivindicada[i]) aulaCoberta.set(a.id, true); });
+            reportsComIndice.forEach((r, i) => { if (relatorioConsumido[i]) reportConsumido[r.idx] = true; });
+        });
+
+        // 2ª passada (fallback) — só aluno_id, só com o que sobrou de cada lado
+        const restantes = candidatas.filter(a => !aulaCoberta.get(a.id));
+        if (restantes.length) {
+            const reportsSobrando = reports
+                .map((r, idx) => ({ r, idx }))
+                .filter(({ idx }) => !reportConsumido[idx])
+                .map(({ r }) => r);
+
+            const gruposAluno = this._agruparPor(restantes, a => a.aluno_id);
+            Object.entries(gruposAluno).forEach(([alunoId, aulasGrupo]) => {
+                const reportsGrupo = reportsSobrando.filter(r => r.aluno_id === alunoId);
+                const { aulaReivindicada } = this._casarAulasComRelatorios(aulasGrupo, reportsGrupo);
+                aulasGrupo.forEach((a, i) => { if (aulaReivindicada[i]) aulaCoberta.set(a.id, true); });
+            });
+        }
+
+        return candidatas
+            .filter(a => !aulaCoberta.get(a.id))
+            .map(a => ({
+                aulaId: a.id,
+                alunoNome: a.aluno_nome,
+                professorNome: a.professor_nome,
+                data: a.data,
+                horario: a.horario,
+                horasAtraso: Math.floor((agora.getTime() - a._dt) / (60 * 60 * 1000))
+            }))
+            .sort((a, b) => b.horasAtraso - a.horasAtraso);
     }
 };

@@ -490,7 +490,13 @@ CREATE OR REPLACE TRIGGER trg_despesas_updated_at
     BEFORE UPDATE ON public.despesas
     FOR EACH ROW EXECUTE FUNCTION public.fn_updated_at();
 
--- Ao salvar relatório: marca aula como realizada, decrementa aluno, incrementa professor
+-- Ao salvar relatório: marca aula como realizada, decrementa aluno, incrementa professor.
+-- ÚNICO lugar do sistema que deve escrever em professores_info.saldo_aulas_dadas/
+-- saldo_aulas_sem_aluno e em alunos_info.aulas_disponiveis — NÃO duplicar essa
+-- lógica no client (js/modules/relatorios.js). Duplicação client+trigger causou
+-- um bug de contagem dupla entre mai/2026 e set/2026 (todo professor com o
+-- dobro de aulas registradas, todo aluno perdendo 2 créditos por aula em vez
+-- de 1), corrigido em set/2026.
 CREATE OR REPLACE FUNCTION public.fn_after_relatorio_insert()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -508,14 +514,15 @@ BEGIN
     RETURNING id INTO v_aluno_info_id;
 
     UPDATE public.professores_info
-    SET saldo_aulas_dadas = saldo_aulas_dadas + 1,
+    SET saldo_aulas_dadas     = saldo_aulas_dadas + 1,
+        saldo_aulas_sem_aluno = saldo_aulas_sem_aluno + CASE WHEN NEW.sem_aluno THEN 1 ELSE 0 END,
         updated_at = NOW()
     WHERE usuario_id = NEW.professor_id
     RETURNING id INTO v_professor_info_id;
 
     IF v_professor_info_id IS NULL THEN
-        INSERT INTO public.professores_info (usuario_id, saldo_aulas_dadas)
-        VALUES (NEW.professor_id, 1);
+        INSERT INTO public.professores_info (usuario_id, saldo_aulas_dadas, saldo_aulas_sem_aluno)
+        VALUES (NEW.professor_id, 1, CASE WHEN NEW.sem_aluno THEN 1 ELSE 0 END);
     END IF;
 
     INSERT INTO public.audit_log (acao, usuario_id, tabela, registro_id, dados_novos)
@@ -537,6 +544,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION public.fn_after_relatorio_insert() IS
+'Único ponto de escrita para professores_info.saldo_aulas_dadas/saldo_aulas_sem_aluno e alunos_info.aulas_disponiveis a partir de um relatório. NÃO duplicar esta lógica no client (js/modules/relatorios.js) — isso causou um bug de contagem dupla entre mai/2026 e set/2026, corrigido em set/2026.';
 
 CREATE OR REPLACE TRIGGER trg_after_relatorio_insert
     AFTER INSERT ON public.relatorios

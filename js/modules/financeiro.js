@@ -458,6 +458,13 @@ Modules.Financeiro = {
 
         const mesRef = this._mesReferenciaAtual();
 
+        // relatorios só entra aqui pra saber quem deu aula ESTE mês (pendências
+        // de pagamento) — filtrar no servidor evita buscar a tabela inteira.
+        // Sem esse filtro de data, essa busca esbarra no limite de ~1000 linhas
+        // por requisição do Supabase (a plataforma já passou disso em set/2026)
+        // e passa a vir incompleta, sem erro nenhum avisando.
+        const inicioMesFin = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+
         const [
             { data: pagAlunos }, { data: pagDespesas }, { data: pagProfs },
             { data: alunosInfo }, { data: despesas }, { data: profs }, { data: rels }
@@ -468,7 +475,7 @@ Modules.Financeiro = {
             supabase.from('alunos_info').select('usuario:usuarios!alunos_info_usuario_id_fkey(id, ativo)'),
             supabase.from('despesas').select('id, ativo, recorrente'),
             supabase.from('usuarios').select('id').eq('role', 'professor').eq('ativo', true),
-            supabase.from('relatorios').select('professor_id, created_at')
+            supabase.from('relatorios').select('professor_id, created_at').gte('created_at', inicioMesFin)
         ]);
 
         const recebidoMes = (pagAlunos || []).filter(p => p.mes_referencia === mesRef).reduce((s, p) => s + p.valor, 0);
@@ -1153,9 +1160,14 @@ Modules.Financeiro = {
         if (!container) return;
 
         const mesRef = this._mesReferenciaAtual();
+        const inicioMesProfs = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
         const [{ data: profs, error }, { data: rels }, { data: pagamentos }] = await Promise.all([
             supabase.from('usuarios').select('id, nome').eq('role', 'professor').eq('ativo', true).order('nome'),
-            supabase.from('relatorios').select('professor_id, created_at, sem_aluno'),
+            // Filtrado pro mês atual no servidor — sem isso, essa busca (que
+            // calcula quanto pagar cada professor) esbarra no limite de ~1000
+            // linhas por requisição do Supabase e pode SUBESTIMAR o valor a
+            // pagar sem nenhum erro visível. Achado em set/2026.
+            supabase.from('relatorios').select('professor_id, created_at, sem_aluno').gte('created_at', inicioMesProfs),
             supabase.from('pagamentos_professores').select('professor_id, mes_referencia')
         ]);
 

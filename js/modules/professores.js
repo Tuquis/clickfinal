@@ -168,6 +168,15 @@ Modules.Professores = {
     },
 
     async _loadAdmin() {
+        // Busca só os relatórios do mês atual (é tudo que cMes/cMesSemAluno
+        // precisam) em vez de todos os relatórios já lançados na plataforma.
+        // Buscar tudo sem filtro de data quebrou em set/2026: a tabela passou
+        // de 1000 linhas e o Supabase corta silenciosamente nesse limite por
+        // requisição sem paginação — sumia com relatórios recentes (inclusive
+        // do próprio dia) da contagem mensal de vários professores.
+        const agora = new Date();
+        const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString();
+
         const [
             { data: profs, error },
             { data: profInfos },
@@ -175,7 +184,7 @@ Modules.Professores = {
         ] = await Promise.all([
             supabase.from('usuarios').select('id, nome, email, ativo').eq('role', 'professor').order('nome'),
             supabase.from('professores_info').select('usuario_id, materia, chave_pix, saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref'),
-            supabase.from('relatorios').select('professor_id, created_at, sem_aluno')
+            supabase.from('relatorios').select('professor_id, created_at, sem_aluno').gte('created_at', inicioMes)
         ]);
 
         if (error) {
@@ -193,13 +202,12 @@ Modules.Professores = {
         const piMap = {};
         (profInfos || []).forEach(pi => { piMap[pi.usuario_id] = pi; });
 
-        const now = new Date();
         const cMes = {};
         const cMesSemAluno = {};
         (rels || []).forEach(r => {
             const pid = r.professor_id;
             const d = new Date(r.created_at);
-            if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+            if (d.getMonth() === agora.getMonth() && d.getFullYear() === agora.getFullYear()) {
                 cMes[pid] = (cMes[pid] || 0) + 1;
                 if (r.sem_aluno) cMesSemAluno[pid] = (cMesSemAluno[pid] || 0) + 1;
             }
@@ -209,13 +217,13 @@ Modules.Professores = {
             ...p,
             total:          piMap[p.id]?.saldo_aulas_dadas     || 0,
             totalSemAluno:  piMap[p.id]?.saldo_aulas_sem_aluno || 0,
-            mes:            (cMes[p.id] || 0) + _ajusteMes(piMap[p.id], now),
+            mes:            (cMes[p.id] || 0) + _ajusteMes(piMap[p.id], agora),
             mesSemAluno:    cMesSemAluno[p.id] || 0,
             materia:        piMap[p.id]?.materia   || '—',
             chave_pix:      piMap[p.id]?.chave_pix || '—'
         }));
 
-        this._renderTabela(this._todosProfs, now);
+        this._renderTabela(this._todosProfs, agora);
     },
 
     _filtrar(query) {

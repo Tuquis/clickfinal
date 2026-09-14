@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ensinoclick — Login</title>
+    <title>Click do Saber — Login</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,56 +12,109 @@
 <body>
     <div id="toast-container"></div>
 
-    <div class="login-wrapper">
-        <div class="login-card">
-            <div class="login-logo">
-                <img src="img/isotipo.png" alt="Click do Saber" class="login-logo-img" />
-                <div>
-                    <div class="login-title">Click do Saber</div>
-                    <div class="login-subtitle">Plataforma Educacional</div>
+    <div class="login-page">
+        <!-- PAINEL DE MARCA -->
+        <div class="login-brand">
+            <div class="login-brand-decor" aria-hidden="true"></div>
+            <div class="login-brand-content">
+                <div class="login-brand-logo">
+                    <img src="img/isotipo.png" alt="Click do Saber" />
+                    <span>Click do Saber</span>
                 </div>
+
+                <h1 class="login-brand-headline">Tudo sobre suas aulas, em um só lugar.</h1>
+                <p class="login-brand-sub">
+                    Para professores e alunos: agenda, relatórios e acompanhamento
+                    pedagógico sempre à mão.
+                </p>
+
+                <ul class="login-brand-features">
+                    <li>
+                        <span class="icon">📅</span>
+                        <div>
+                            <strong>Agenda sempre à mão</strong>
+                            <span>Acompanhe suas próximas aulas e receba lembretes automáticos</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="icon">📝</span>
+                        <div>
+                            <strong>Relatórios de aula</strong>
+                            <span>Veja o conteúdo ensinado e o desempenho em cada aula</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="icon">🎯</span>
+                        <div>
+                            <strong>Acompanhamento pedagógico</strong>
+                            <span>Cronograma e evolução sempre atualizados</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="icon">📄</span>
+                        <div>
+                            <strong>Atividades</strong>
+                            <span>Envie e responda suas atividades pendentes</span>
+                        </div>
+                    </li>
+                </ul>
             </div>
 
-            <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label class="form-label" for="login-email">Email</label>
-                    <input
-                        type="email"
-                        id="login-email"
-                        class="input"
-                        placeholder="seu@email.com"
-                        autocomplete="email"
-                        required
-                    />
+            <p class="login-brand-footer">© 2026 Click do Saber · Plataforma de gestão educacional</p>
+        </div>
+
+        <!-- PAINEL DE LOGIN -->
+        <div class="login-panel">
+            <div class="login-panel-inner">
+                <div class="login-panel-logo">
+                    <img src="img/isotipo.png" alt="Click do Saber" />
+                    <span>Click do Saber</span>
                 </div>
-                <div class="form-group">
-                    <label class="form-label" for="login-password">Senha</label>
-                    <div style="position:relative">
+
+                <div class="login-heading">
+                    <h2>Bem-vindo de volta</h2>
+                    <p>Acesse sua conta para continuar</p>
+                </div>
+
+                <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label" for="login-email">Email</label>
                         <input
-                            type="password"
-                            id="login-password"
-                            class="input"
-                            placeholder="••••••••"
-                            autocomplete="current-password"
+                            type="email"
+                            id="login-email"
+                            class="input login-input"
+                            placeholder="seu@email.com"
+                            autocomplete="email"
                             required
-                            style="padding-right: 40px"
                         />
-                        <button type="button"
-                            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--color-text-3);font-size:0.875rem"
-                            onclick="togglePassword()">
-                            👁
-                        </button>
                     </div>
-                </div>
+                    <div class="form-group">
+                        <label class="form-label" for="login-password">Senha</label>
+                        <div class="login-password-wrap">
+                            <input
+                                type="password"
+                                id="login-password"
+                                class="input login-input"
+                                placeholder="••••••••"
+                                autocomplete="current-password"
+                                required
+                            />
+                            <button type="button" class="login-password-toggle" onclick="togglePassword()" aria-label="Mostrar senha">
+                                <svg id="login-eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg id="login-eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.6 19.6 0 0 1 5.06-5.94M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a19.7 19.7 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                    </div>
 
-                <div id="login-error" class="info-box" style="display:none;background:var(--color-red-bg);border-color:#fecaca;color:var(--color-red)"></div>
+                    <div id="login-error" class="info-box login-error" style="display:none"></div>
 
-                <button type="submit" class="btn btn-primary" id="btn-login" style="width:100%;padding:12px">
-                    Entrar
-                </button>
+                    <button type="submit" class="btn btn-primary login-submit" id="btn-login">
+                        Entrar
+                    </button>
+                </form>
 
-                <p class="login-divider">Plataforma para uso institucional</p>
-            </form>
+                <p class="login-help">Problemas para acessar? Fale com o suporte</p>
+            </div>
         </div>
     </div>
 
@@ -135,7 +188,10 @@
 
         function togglePassword() {
             const input = document.getElementById('login-password');
-            input.type = input.type === 'password' ? 'text' : 'password';
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            document.getElementById('login-eye-open').style.display = isHidden ? 'none' : 'block';
+            document.getElementById('login-eye-closed').style.display = isHidden ? 'block' : 'none';
         }
     </script>
 </body>
