@@ -4,6 +4,16 @@
 // Disparada a cada minuto pelo pg_cron.
 // - Email ao professor: ~30 min antes
 // - WhatsApp: templates via API oficial da Meta
+//
+// Consulta psico — lembrete 20 min (set/2026): aluno, responsável e
+// psicopedagoga avisados no mesmo instante (18–22 min antes), com UM
+// template só (lembrete_consulta_20min) e a MESMA mensagem pros 3 — sem
+// saudação nem texto personalizado por destinatário, só horário + nome
+// do aluno + nome da psico + link. Evita manter/aprovar 3 templates
+// separados na Meta. Substitui o mix antigo de 10min-psico + 30min-
+// responsável (mantido no código só até o 20min ser aprovado e
+// confirmado funcionando — aí sim remover o loop antigo e as colunas de
+// flag correspondentes).
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -53,6 +63,10 @@ Deno.serve(async (req) => {
   // Janela WhatsApp aluno 10 min: 8–12 min
   const { time: h8  } = toSaoPaulo(new Date(now.getTime() +  8 * 60_000))
   const { time: h12 } = toSaoPaulo(new Date(now.getTime() + 12 * 60_000))
+
+  // Janela WhatsApp consulta psico 20 min (aluno + responsável + psico, todos juntos): 18–22 min
+  const { time: h18 } = toSaoPaulo(new Date(now.getTime() + 18 * 60_000))
+  const { time: h22 } = toSaoPaulo(new Date(now.getTime() + 22 * 60_000))
 
   // Janela bom dia: 07:58–08:02
   const isMorningWindow = nowTimeSP >= '07:58' && nowTimeSP <= '08:02'
@@ -118,6 +132,27 @@ Deno.serve(async (req) => {
     .eq('lembrete_whatsapp_30min_responsavel_enviado', false)
     .gte('horario', h28)
     .lte('horario', h32)
+
+  // ── Busca consultas psico para o lembrete unificado de 20 min — um só
+  // template (lembrete_consulta_20min), mesma mensagem enviada pra aluno,
+  // responsável e psicopedagoga (sem saudação/personalização — só
+  // horário, nome do aluno, nome da psico e link). Busca uma vez só;
+  // dentro do loop cada um dos 3 destinatários é checado pela sua própria
+  // flag, então quem já recebeu não recebe de novo mesmo que outro
+  // destinatário da mesma consulta ainda esteja pendente.
+  const { data: consultasZap20 } = await db
+    .from('agenda_psico')
+    .select(`
+      id, data, horario, link_meet, psico_id, aluno_id,
+      lembrete_whatsapp_20min_aluno_enviado,
+      lembrete_whatsapp_20min_responsavel_enviado,
+      lembrete_whatsapp_20min_psico_enviado
+    `)
+    .eq('data', today)
+    .eq('status', 'agendada')
+    .gte('horario', h18)
+    .lte('horario', h22)
+    .or('lembrete_whatsapp_20min_aluno_enviado.eq.false,lembrete_whatsapp_20min_responsavel_enviado.eq.false,lembrete_whatsapp_20min_psico_enviado.eq.false')
 
   const results: any[] = []
 
@@ -344,6 +379,84 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Envia WHATSAPP 20 min — lembrete unificado (aluno, responsável e
+  // psicopedagoga). Um template só (lembrete_consulta_20min), e a MESMA
+  // mensagem pros 3 — sem saudação nem personalização por destinatário,
+  // só o fato: horário, nome do aluno, nome da psico e o link. Só muda
+  // pra qual telefone cada um dos 3 é enviado.
+  for (const consulta of (consultasZap20 || [])) {
+    const [{ data: aluno }, { data: alunoInfo }, { data: psico }, { data: psicoInfo }] = await Promise.all([
+      db.from('usuarios').select('nome').eq('id', consulta.aluno_id).single(),
+      db.from('alunos_info').select('telefone_aluno, telefone').eq('usuario_id', consulta.aluno_id).single(),
+      db.from('usuarios').select('nome').eq('id', consulta.psico_id).single(),
+      db.from('psico_info').select('telefone').eq('usuario_id', consulta.psico_id).single()
+    ])
+
+    const nomeAluno  = aluno?.nome ?? 'aluno'
+    const nomePsico   = psico?.nome ?? 'psicopedagoga'
+    const horarioFmt  = (consulta.horario ?? '').substring(0, 5)
+    const link        = consulta.link_meet || 'Ainda não informado'
+    // Mesmos parâmetros pros 3 envios — o template não muda por destinatário.
+    const parametros  = [horarioFmt, nomeAluno, nomePsico, link]
+
+    // Aluno
+    if (!consulta.lembrete_whatsapp_20min_aluno_enviado) {
+      try {
+        const telefone = alunoInfo?.telefone_aluno
+        if (telefone) {
+          await enviarTemplate(telefone, 'lembrete_consulta_20min', parametros)
+          console.log(`WhatsApp 20min aluno enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
+          results.push({ id: consulta.id, tipo: 'zapPsico20Aluno', status: 'enviado', para: normalizarTelefone(telefone) })
+        } else {
+          results.push({ id: consulta.id, tipo: 'zapPsico20Aluno', status: 'sem_telefone' })
+        }
+        await db.from('agenda_psico').update({ lembrete_whatsapp_20min_aluno_enviado: true }).eq('id', consulta.id)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`Erro WhatsApp 20min aluno ${consulta.id}:`, msg)
+        results.push({ id: consulta.id, tipo: 'zapPsico20Aluno', status: 'erro', erro: msg })
+      }
+    }
+
+    // Responsável (mesmo telefone/coluna do aluno usados nos lembretes de aula — alunos_info.telefone)
+    if (!consulta.lembrete_whatsapp_20min_responsavel_enviado) {
+      try {
+        const telefone = alunoInfo?.telefone
+        if (telefone) {
+          await enviarTemplate(telefone, 'lembrete_consulta_20min', parametros)
+          console.log(`WhatsApp 20min responsável enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
+          results.push({ id: consulta.id, tipo: 'zapPsico20Resp', status: 'enviado', para: normalizarTelefone(telefone) })
+        } else {
+          results.push({ id: consulta.id, tipo: 'zapPsico20Resp', status: 'sem_telefone' })
+        }
+        await db.from('agenda_psico').update({ lembrete_whatsapp_20min_responsavel_enviado: true }).eq('id', consulta.id)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`Erro WhatsApp 20min responsável ${consulta.id}:`, msg)
+        results.push({ id: consulta.id, tipo: 'zapPsico20Resp', status: 'erro', erro: msg })
+      }
+    }
+
+    // Psicopedagoga
+    if (!consulta.lembrete_whatsapp_20min_psico_enviado) {
+      try {
+        const telefone = psicoInfo?.telefone
+        if (telefone) {
+          await enviarTemplate(telefone, 'lembrete_consulta_20min', parametros)
+          console.log(`WhatsApp 20min psico enviado — ${normalizarTelefone(telefone)} — consulta ${consulta.id}`)
+          results.push({ id: consulta.id, tipo: 'zapPsico20Psico', status: 'enviado', para: normalizarTelefone(telefone) })
+        } else {
+          results.push({ id: consulta.id, tipo: 'zapPsico20Psico', status: 'sem_telefone' })
+        }
+        await db.from('agenda_psico').update({ lembrete_whatsapp_20min_psico_enviado: true }).eq('id', consulta.id)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`Erro WhatsApp 20min psico ${consulta.id}:`, msg)
+        results.push({ id: consulta.id, tipo: 'zapPsico20Psico', status: 'erro', erro: msg })
+      }
+    }
+  }
+
   // ── Bom dia para professores com aula hoje (08:00) ───────────
   if (isMorningWindow) {
     // Busca todos os professor_id distintos com aula agendada hoje
@@ -426,10 +539,18 @@ Deno.serve(async (req) => {
   const zapPsico10Enviados   = results.filter(r => r.tipo === 'zapPsico10'      && r.status === 'enviado').length
   const bomDiaPsicoEnv       = results.filter(r => r.tipo === 'bomDiaPsico'     && r.status === 'enviado').length
   const zapPsico30RespEnv    = results.filter(r => r.tipo === 'zapPsico30Resp'  && r.status === 'enviado').length
-  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}, psico10: ${zapPsico10Enviados}, bomDiaPsico: ${bomDiaPsicoEnv}, psico30Resp: ${zapPsico30RespEnv}`)
+  const zapPsico20AlunoEnv   = results.filter(r => r.tipo === 'zapPsico20Aluno' && r.status === 'enviado').length
+  const zapPsico20RespEnv    = results.filter(r => r.tipo === 'zapPsico20Resp'  && r.status === 'enviado').length
+  const zapPsico20PsicoEnv   = results.filter(r => r.tipo === 'zapPsico20Psico' && r.status === 'enviado').length
+  console.log(`Concluído — emails: ${emailEnviados}, zap25: ${zapEnviados}, zap10: ${zap10Enviados}, zapProf: ${zapProfEnviados}, bomDia: ${bomDiaEnviados}, psico10: ${zapPsico10Enviados}, bomDiaPsico: ${bomDiaPsicoEnv}, psico30Resp: ${zapPsico30RespEnv}, psico20Aluno: ${zapPsico20AlunoEnv}, psico20Resp: ${zapPsico20RespEnv}, psico20Psico: ${zapPsico20PsicoEnv}`)
 
   return new Response(
-    JSON.stringify({ emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados, zapPsico10Enviados, bomDiaPsicoEnv, zapPsico30RespEnv, total: results.length, results }),
+    JSON.stringify({
+      emailEnviados, zapEnviados, zap10Enviados, zapProfEnviados, bomDiaEnviados,
+      zapPsico10Enviados, bomDiaPsicoEnv, zapPsico30RespEnv,
+      zapPsico20AlunoEnv, zapPsico20RespEnv, zapPsico20PsicoEnv,
+      total: results.length, results
+    }),
     { headers: { 'Content-Type': 'application/json' } }
   )
 })

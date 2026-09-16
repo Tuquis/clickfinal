@@ -383,6 +383,16 @@ CREATE TABLE IF NOT EXISTS public.agenda_psico (
     status      TEXT NOT NULL DEFAULT 'agendada'
         CHECK (status IN ('agendada','realizada','cancelada')),
     created_by  UUID REFERENCES public.usuarios(id),
+    -- Lembretes WhatsApp — cada flag controla um envio (send-class-reminders,
+    -- cron de 1 em 1 min). 10min/30min: templates aprovados mas com timing
+    -- inconsistente entre destinatários. 20min: substituto unificado (aluno,
+    -- responsável e psicopedagoga avisados no mesmo instante), adicionado
+    -- em set/2026 depois que a Meta rejeitou a submissão anterior.
+    lembrete_whatsapp_10min_enviado              BOOLEAN NOT NULL DEFAULT false,
+    lembrete_whatsapp_30min_responsavel_enviado  BOOLEAN NOT NULL DEFAULT false,
+    lembrete_whatsapp_20min_aluno_enviado        BOOLEAN NOT NULL DEFAULT false,
+    lembrete_whatsapp_20min_responsavel_enviado  BOOLEAN NOT NULL DEFAULT false,
+    lembrete_whatsapp_20min_psico_enviado        BOOLEAN NOT NULL DEFAULT false,
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
