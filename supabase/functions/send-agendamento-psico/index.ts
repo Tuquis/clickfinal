@@ -27,18 +27,12 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST')    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers })
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers })
-  }
-
+  // O gateway da Supabase já exige e valida o JWT antes da requisição
+  // chegar aqui (função com verify_jwt ativo) — reautenticar de novo com
+  // db.auth.getUser() era redundante e ficou vulnerável a um bug da
+  // própria Supabase (401 intermitente na validação de JWT, ativo desde
+  // ago/2026 — ver status.supabase.com). Removido em set/2026.
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-  const token = authHeader.replace('Bearer ', '')
-  const { data: { user }, error: authErr } = await db.auth.getUser(token)
-  if (authErr || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers })
-  }
 
   const { agendaPsicoId } = await req.json()
   if (!agendaPsicoId) {
