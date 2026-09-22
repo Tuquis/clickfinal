@@ -242,16 +242,13 @@ Modules.Alunos = {
             return;
         }
 
-        const { data: current } = await supabase
-            .from('alunos_info')
-            .select('aulas_disponiveis')
-            .eq('usuario_id', alunoId)
-            .single();
-
-        const { error } = await supabase
-            .from('alunos_info')
-            .update({ aulas_disponiveis: (current?.aulas_disponiveis || 0) + qtd })
-            .eq('usuario_id', alunoId);
+        // Incremento atômico no banco (SET x = x + qtd numa instrução só) —
+        // evita a corrida com o trigger de relatório, que debita 1 aula
+        // concorrentemente sempre que um professor lança um relatório.
+        const { error } = await supabase.rpc('incrementar_aulas_disponiveis', {
+            p_usuario_id: alunoId,
+            p_delta: qtd
+        });
 
         if (error) return showToast(error.message, 'error');
 

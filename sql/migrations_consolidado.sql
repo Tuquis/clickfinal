@@ -1225,6 +1225,38 @@ RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT COUNT(*) FROM public.relatorios WHERE professor_id = prof_id;
 $$;
 
+-- Incremento atômico de aulas_disponiveis (usado pra ADICIONAR créditos —
+-- ex: aluno comprou novo pacote). Substitui o padrão "lê valor atual, soma
+-- no client, grava" que tinha uma janela de corrida: se o trigger de
+-- relatório (que debita 1 aula) rodasse entre a leitura e a gravação dessa
+-- função, o crédito adicionado podia sobrescrever e apagar esse débito.
+CREATE OR REPLACE FUNCTION public.incrementar_aulas_disponiveis(p_usuario_id UUID, p_delta INTEGER)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_novo_saldo INTEGER;
+BEGIN
+    IF public.get_user_role() <> 'admin' THEN
+        RAISE EXCEPTION 'Apenas admin pode ajustar aulas_disponiveis';
+    END IF;
+
+    UPDATE public.alunos_info
+    SET aulas_disponiveis = GREATEST(0, aulas_disponiveis + p_delta),
+        updated_at = NOW()
+    WHERE usuario_id = p_usuario_id
+    RETURNING aulas_disponiveis INTO v_novo_saldo;
+
+    RETURN v_novo_saldo;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.incrementar_aulas_disponiveis(UUID, INTEGER) TO authenticated;
+
+COMMENT ON FUNCTION public.incrementar_aulas_disponiveis(UUID, INTEGER) IS
+'Incremento atômico (UPDATE SET x = x + delta em uma única instrução) de alunos_info.aulas_disponiveis — usar sempre que for ADICIONAR crédito pelo admin, em vez de ler o valor no client e gravar de volta somado (isso tem race condition com o trigger de relatório, que debita concorrentemente). Criado em set/2026.';
+
 -- Contatos do chat: professor → alunos ativos | aluno → professores ativos
 -- SECURITY DEFINER bypassa RLS, permitindo que alunos vejam professores
 DROP FUNCTION IF EXISTS public.get_contatos_chat(TEXT);
