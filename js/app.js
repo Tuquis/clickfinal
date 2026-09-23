@@ -84,24 +84,38 @@ function renderSidebar() {
     const items = SIDEBAR_ITEMS[role] || [];
     const profile = AppState.userProfile;
 
+    // Classe no <body> pra escopar CSS por perfil (ex: barra flutuante e
+    // topo simplificado só aparecem pro aluno, via `body.role-aluno`).
+    document.body.classList.add('role-' + role);
+
+    const avatarBtn = document.getElementById('topbar-avatar-btn');
+    const avatarLetter = document.getElementById('topbar-avatar-letter');
+    if (avatarLetter) avatarLetter.textContent = profile?.nome?.charAt(0).toUpperCase() || 'U';
+    if (avatarBtn) avatarBtn.title = profile?.nome || '';
+
+    if (role === 'aluno') renderAlunoTabbar(items);
+
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
+
+    const isAluno = role === 'aluno';
 
     sidebar.innerHTML = `
         <div class="sidebar-logo">
             <img src="img/isotipo.png" alt="Click do Saber" class="logo-img" />
             <span class="logo-text">Click do Saber</span>
         </div>
-        <nav class="sidebar-nav">
-            ${items.map(item => `
-                <button class="nav-item" id="nav-${item.id}" onclick="Router.navigate('${item.id}')">
+        <nav class="sidebar-nav${isAluno ? ' sidebar-nav--aluno' : ''}">
+            ${isAluno ? '<div class="sidebar-nav-indicator" id="sidebar-nav-indicator"></div>' : ''}
+            ${items.map((item, i) => `
+                <button class="nav-item" id="nav-${item.id}" style="--i:${i}" onclick="Router.navigate('${item.id}')">
                     <span class="nav-icon">${item.icon}</span>
                     <span class="nav-label">${item.label}</span>
-                    ${item.badge ? '<span class="nav-badge" id="chat-nav-badge" style="display:none">0</span>' : ''}
+                    ${item.badge ? '<span class="nav-badge chat-nav-badge" style="display:none">0</span>' : ''}
                 </button>
             `).join('')}
         </nav>
-        <div class="sidebar-footer">
+        <div class="sidebar-footer${isAluno ? ' sidebar-footer--aluno' : ''}">
             <div class="user-avatar">${profile?.nome?.charAt(0).toUpperCase() || 'U'}</div>
             <div class="user-info">
                 <div class="user-name">${escapeHtml(profile?.nome || '')}</div>
@@ -116,6 +130,44 @@ function setActiveSidebarItem(id) {
     document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
     const active = document.getElementById('nav-' + id);
     if (active) active.classList.add('active');
+
+    // Indicador deslizante (só existe na sidebar do aluno) — em vez de só
+    // trocar a cor do item ativo, uma "pílula" roxa desliza até ele.
+    const indicator = document.getElementById('sidebar-nav-indicator');
+    if (indicator && active) {
+        indicator.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+        indicator.style.width  = active.offsetWidth  + 'px';
+        indicator.style.height = active.offsetHeight + 'px';
+        indicator.classList.add('visible');
+    }
+
+    document.querySelectorAll('.aluno-tabbar-item').forEach(btn => btn.classList.remove('active'));
+    const activeTab = document.getElementById('tab-' + id);
+    if (activeTab) activeTab.classList.add('active');
+}
+
+// ============================================================
+// BARRA FLUTUANTE (ALUNO, MOBILE) — reaproveita SIDEBAR_ITEMS.aluno,
+// então nunca sai de sincronia com o menu (mesmos itens, mesma ordem).
+// ============================================================
+function renderAlunoTabbar(items) {
+    const tabbar = document.getElementById('aluno-tabbar');
+    if (!tabbar) return;
+
+    tabbar.innerHTML = items.map(item => `
+        <button class="aluno-tabbar-item" id="tab-${item.id}" onclick="Router.navigate('${item.id}')">
+            <span class="aluno-tabbar-icon">${item.icon}</span>
+            <span class="aluno-tabbar-label">${item.label.split(' ')[0]}</span>
+            ${item.badge ? '<span class="aluno-tabbar-badge chat-nav-badge" style="display:none">0</span>' : ''}
+        </button>
+    `).join('');
+}
+
+async function handleTopbarAvatarClick() {
+    // No mobile do aluno é o único jeito de sair (a sidebar tradicional,
+    // que tem o botão de logout, fica escondida nessa faixa de tela).
+    const confirmed = await confirmAction('Sair da plataforma?');
+    if (confirmed) Auth.logout();
 }
 
 // ============================================================

@@ -46,10 +46,13 @@ Modules.Chat = {
     },
 
     _setBadge(n) {
-        const badge = document.getElementById('chat-nav-badge');
-        if (!badge) return;
-        badge.textContent    = n > 9 ? '9+' : String(n);
-        badge.style.display  = n > 0 ? '' : 'none';
+        // Atualiza todo badge de chat não lido na tela — sidebar tradicional
+        // E a barra flutuante do aluno (mobile), que tem o próprio badge
+        // com a mesma classe, pra nunca ficarem dessincronizados.
+        document.querySelectorAll('.chat-nav-badge').forEach(badge => {
+            badge.textContent   = n > 9 ? '9+' : String(n);
+            badge.style.display = n > 0 ? '' : 'none';
+        });
     },
 
     _onGlobalMessage(msg) {
@@ -323,7 +326,7 @@ Modules.Chat = {
                         onchange="Modules.Chat._onFileSelect(event)">
                     <button class="chat-attach-btn" title="Enviar arquivo" onclick="Modules.Chat._abrirSeletorArquivo()">📎</button>
                     <textarea class="chat-input" id="chat-direct-input"
-                        placeholder="Digite uma mensagem… (Enter para enviar)"
+                        placeholder="Digite uma mensagem…"
                         rows="1"
                         onkeydown="Modules.Chat._handleKey(event)"></textarea>
                     <button class="btn btn-primary chat-send-btn" onclick="Modules.Chat.send()">Enviar</button>

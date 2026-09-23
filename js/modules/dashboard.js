@@ -174,18 +174,39 @@ Modules.Dashboard = {
             Modules.Dashboard._fetchMensagensNaoLidas(id)
         ]);
 
+        const primeiroNome = AppState.userProfile.nome.split(' ')[0];
+        const proxima = proximasAulas?.[0] || null;
+
         renderContent(`
-            <div class="page-header">
-                <h1 class="page-title">Olá, ${escapeHtml(AppState.userProfile.nome.split(' ')[0])}</h1>
+            <div class="aluno-hero">
+                <div class="aluno-hero-decor" aria-hidden="true"></div>
+                <div class="aluno-hero-greeting">Olá, ${escapeHtml(primeiroNome)} 👋</div>
+                <div class="aluno-hero-sub">${proxima ? 'Você tem aula chegando — bora se preparar?' : 'Nenhuma aula agendada por enquanto.'}</div>
+
+                ${proxima ? `
+                    <div class="aluno-next-card">
+                        <div class="aluno-next-label">Próxima aula · ${fmt.date(proxima.data)}</div>
+                        <div class="aluno-next-body">
+                            <div class="aluno-next-time">${fmt.time(proxima.horario)}</div>
+                            <div class="aluno-next-info">
+                                <div class="aluno-next-conteudo">${escapeHtml(proxima.conteudo)}</div>
+                                <div class="aluno-next-meta">Prof. ${escapeHtml(proxima.professor_nome)}</div>
+                            </div>
+                            ${proxima.link_meet
+                                ? `<a href="${escapeHtml(proxima.link_meet)}" target="_blank" class="aluno-next-cta">Entrar</a>`
+                                : ''}
+                        </div>
+                    </div>
+                ` : ''}
             </div>
 
             ${Modules.Dashboard._notificacoesHtml(notificacoes)}
 
-            <div class="stats-grid stats-grid-2">
+            <div class="stats-grid stats-grid-2 aluno-dash-stats">
                 ${Modules.Dashboard._statCard('Aulas Disponíveis', alunoInfo?.aulas_disponiveis || 0, '🎓', 'stat-blue')}
                 ${Modules.Dashboard._statCard('Tarefas Pendentes', tarefas?.length || 0, '📋', 'stat-purple')}
             </div>
-            <div class="card">
+            <div class="card aluno-dash-card">
                 <div class="card-header">
                     <h3>Próximas Aulas</h3>
                     <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
