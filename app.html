@@ -55,6 +55,11 @@
     <!-- Barra flutuante de navegação (só aparece pro aluno, no mobile) -->
     <nav class="aluno-tabbar" id="aluno-tabbar"></nav>
 
+    <!-- Barra de navegação do professor (mobile) + gaveta "Mais" -->
+    <nav class="prof-tabbar" id="prof-tabbar" aria-label="Navegação principal"></nav>
+    <div class="prof-sheet-backdrop" id="prof-sheet-backdrop" onclick="closeProfMoreSheet()"></div>
+    <div class="prof-sheet" id="prof-sheet" role="dialog" aria-modal="true" aria-label="Mais opções"></div>
+
     <!-- ============================================================
          EXTERNAL LIBRARIES
     ============================================================ -->
@@ -81,7 +86,7 @@
     <script src="js/auth.js"></script>
 
     <!-- Módulos -->
-    <script src="js/modules/dashboard.js?v=5"></script>
+    <script src="js/modules/dashboard.js?v=6"></script>
     <script src="js/modules/usuarios.js?v=3"></script>
     <script src="js/modules/alunos.js?v=1"></script>
     <script src="js/modules/agenda.js?v=9"></script>
@@ -97,7 +102,7 @@
     <script src="js/modules/chat.js?v=2"></script>
 
     <!-- Roteador e inicializador principal -->
-    <script src="js/app.js?v=2"></script>
+    <script src="js/app.js?v=3"></script>
 
     <!-- Inicializa EmailJS uma única vez -->
     <script>

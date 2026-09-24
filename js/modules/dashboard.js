@@ -109,22 +109,72 @@ Modules.Dashboard = {
         ]);
 
         const now = new Date();
+        const primeiroNome = AppState.userProfile.nome.split(' ')[0];
+        const saudacao = now.getHours() < 12 ? 'Bom dia' : now.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
+
+        // Início de cada aula de hoje em Date, pra saber o que ainda vem pela frente
+        const inicioDe = a => { const [h, m] = (a.horario || '00:00').split(':').map(Number); const d = new Date(); d.setHours(h, m, 0, 0); return d; };
+        const aindaValem = (hoje || []).filter(a => inicioDe(a).getTime() + 60 * 60000 >= now.getTime());
+        const proxima = aindaValem[0] || null;
+        const proximaFutura = (semana || []).find(a => a.data !== todayISO()) || null;
+
+        let tempoRestante = '';
+        if (proxima) {
+            const min = Math.round((inicioDe(proxima) - now) / 60000);
+            tempoRestante = min > 60 ? `às ${fmt.time(proxima.horario)}`
+                          : min > 0  ? `começa em ${min} min`
+                          : 'em andamento';
+        }
+
+        const resumo = !(hoje || []).length
+            ? 'Nenhuma aula agendada para hoje.'
+            : `Você tem ${hoje.length} aula${hoje.length > 1 ? 's' : ''} hoje${aindaValem.length && aindaValem.length !== hoje.length ? ` · ${aindaValem.length} ainda por vir` : ''}.`;
 
         renderContent(`
-            <div class="page-header">
-                <h1 class="page-title">Bem-vindo, ${escapeHtml(AppState.userProfile.nome.split(' ')[0])}</h1>
-                <button class="btn btn-primary" onclick="Modules.Dashboard._lancarAula()">✓ Lançar Aula</button>
+            <div class="prof-hero">
+                <div class="prof-hero-top">
+                    <div>
+                        <div class="prof-hero-greeting">${saudacao}, ${escapeHtml(primeiroNome)}</div>
+                        <div class="prof-hero-sub">${resumo}</div>
+                    </div>
+                    <button class="prof-hero-cta" onclick="Modules.Dashboard._lancarAula()">✓ Lançar aula</button>
+                </div>
+
+                ${proxima ? `
+                    <div class="prof-next">
+                        <div class="prof-next-label">Próxima aula · ${tempoRestante}</div>
+                        <div class="prof-next-body">
+                            <div class="prof-next-time">${fmt.time(proxima.horario)}</div>
+                            <div class="prof-next-info">
+                                <div class="prof-next-aluno">${escapeHtml(proxima.aluno_nome)}</div>
+                                <div class="prof-next-meta">${escapeHtml(proxima.conteudo)}${proxima.disciplina ? ' · ' + escapeHtml(proxima.disciplina) : ''}</div>
+                            </div>
+                            ${proxima.link_meet ? `<a href="${escapeHtml(proxima.link_meet)}" target="_blank" class="prof-next-btn">Entrar no Meet</a>` : ''}
+                        </div>
+                    </div>
+                ` : proximaFutura ? `
+                    <div class="prof-next">
+                        <div class="prof-next-label">Próxima aula agendada</div>
+                        <div class="prof-next-body">
+                            <div class="prof-next-time">${fmt.time(proximaFutura.horario)}</div>
+                            <div class="prof-next-info">
+                                <div class="prof-next-aluno">${escapeHtml(proximaFutura.aluno_nome)}</div>
+                                <div class="prof-next-meta">${fmt.date(proximaFutura.data)}</div>
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
             </div>
 
             ${Modules.Dashboard._notificacoesHtml(notificacoes)}
             ${Modules.Dashboard._respostasHtml(respostasNovas)}
 
-            <div class="stats-grid stats-grid-3">
+            <div class="stats-grid stats-grid-3 prof-dash-stats">
                 ${Modules.Dashboard._statCard('Aulas Hoje', hoje?.length || 0, '📅', 'stat-blue')}
                 ${Modules.Dashboard._statCard('Próximas Aulas', semana?.length || 0, '📆', 'stat-purple')}
                 ${Modules.Dashboard._statCard('Total Aulas Dadas', profInfo?.saldo_aulas_dadas || 0, '✓', 'stat-green')}
             </div>
-            <div class="card">
+            <div class="card prof-dash-card">
                 <div class="card-header">
                     <h3>Aulas de Hoje</h3>
                     <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Agenda completa</button>
@@ -132,9 +182,7 @@ Modules.Dashboard = {
                 <div class="card-body">
                     ${hoje?.length
                         ? hoje.map(a => {
-                            const [h, m] = (a.horario || '00:00').split(':').map(Number);
-                            const expiry = new Date(); expiry.setHours(h, m + 60, 0, 0);
-                            const expirada = expiry < now;
+                            const expirada = inicioDe(a).getTime() + 60 * 60000 < now.getTime();
                             return `
                             <div class="aula-card ${a.status}${expirada ? ' realizada' : ''}">
                                 <div class="aula-time">${fmt.time(a.horario)}</div>

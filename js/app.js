@@ -93,20 +93,28 @@ function renderSidebar() {
     if (avatarLetter) avatarLetter.textContent = profile?.nome?.charAt(0).toUpperCase() || 'U';
     if (avatarBtn) avatarBtn.title = profile?.nome || '';
 
-    if (role === 'aluno') renderAlunoTabbar(items);
+    if (role === 'aluno')     renderAlunoTabbar(items);
+    if (role === 'professor') renderProfTabbar(items);
 
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
 
+    // Aluno: menu com entrada animada e hover "vivo". Professor: só o
+    // indicador deslizante (ajuda a se orientar), sem animação de entrada
+    // nem efeito de mola — quem abre o sistema várias vezes por dia não
+    // precisa ver o menu "se montar" a cada carregamento.
     const isAluno = role === 'aluno';
+    const isProf  = role === 'professor';
+    const navMod    = isAluno ? ' sidebar-nav--aluno'    : isProf ? ' sidebar-nav--prof'    : '';
+    const footerMod = isAluno ? ' sidebar-footer--aluno' : isProf ? ' sidebar-footer--prof' : '';
 
     sidebar.innerHTML = `
         <div class="sidebar-logo">
             <img src="img/isotipo.png" alt="Click do Saber" class="logo-img" />
             <span class="logo-text">Click do Saber</span>
         </div>
-        <nav class="sidebar-nav${isAluno ? ' sidebar-nav--aluno' : ''}">
-            ${isAluno ? '<div class="sidebar-nav-indicator" id="sidebar-nav-indicator"></div>' : ''}
+        <nav class="sidebar-nav${navMod}">
+            ${(isAluno || isProf) ? '<div class="sidebar-nav-indicator" id="sidebar-nav-indicator"></div>' : ''}
             ${items.map((item, i) => `
                 <button class="nav-item" id="nav-${item.id}" style="--i:${i}" onclick="Router.navigate('${item.id}')">
                     <span class="nav-icon">${item.icon}</span>
@@ -115,7 +123,7 @@ function renderSidebar() {
                 </button>
             `).join('')}
         </nav>
-        <div class="sidebar-footer${isAluno ? ' sidebar-footer--aluno' : ''}">
+        <div class="sidebar-footer${footerMod}">
             <div class="user-avatar">${profile?.nome?.charAt(0).toUpperCase() || 'U'}</div>
             <div class="user-info">
                 <div class="user-name">${escapeHtml(profile?.nome || '')}</div>
@@ -144,6 +152,8 @@ function setActiveSidebarItem(id) {
     document.querySelectorAll('.aluno-tabbar-item').forEach(btn => btn.classList.remove('active'));
     const activeTab = document.getElementById('tab-' + id);
     if (activeTab) activeTab.classList.add('active');
+
+    syncProfTabbar(id);
 }
 
 // ============================================================
@@ -169,6 +179,100 @@ async function handleTopbarAvatarClick() {
     const confirmed = await confirmAction('Sair da plataforma?');
     if (confirmed) Auth.logout();
 }
+
+// ============================================================
+// BARRA DE NAVEGAÇÃO DO PROFESSOR (MOBILE)
+// Diferente da do aluno de propósito: rótulos SEMPRE visíveis (ícone sem
+// texto obriga a adivinhar), alvos de toque maiores, e a ação mais
+// frequente do professor — lançar aula — como botão central em destaque.
+// O professor tem 7 itens de menu, não cabem numa barra: 4 fixos + "Mais".
+// ============================================================
+const PROF_TAB_ROTAS_FIXAS = ['dashboard', 'agenda', 'relatorios', 'chat'];
+
+function renderProfTabbar(items) {
+    const tabbar = document.getElementById('prof-tabbar');
+    if (!tabbar) return;
+
+    const tab = (id, icon, label, extra = '') => `
+        <button class="prof-tab" id="ptab-${id}" onclick="Router.navigate('${id}')">
+            <span class="prof-tab-icon">${icon}</span>
+            <span class="prof-tab-label">${label}</span>
+            ${extra}
+        </button>`;
+
+    tabbar.innerHTML = `
+        ${tab('dashboard', '⊞', 'Início')}
+        ${tab('agenda', '📅', 'Agenda')}
+        <button class="prof-tab prof-tab-cta" id="ptab-cta" onclick="Modules.Dashboard._lancarAula()">
+            <span class="prof-tab-cta-icon">✓</span>
+            <span class="prof-tab-label">Lançar aula</span>
+        </button>
+        ${tab('chat', '💬', 'Chat', '<span class="prof-tab-badge chat-nav-badge" style="display:none">0</span>')}
+        <button class="prof-tab" id="ptab-more" onclick="openProfMoreSheet()" aria-haspopup="dialog">
+            <span class="prof-tab-icon">⋯</span>
+            <span class="prof-tab-label">Mais</span>
+        </button>
+    `;
+
+    // Gaveta "Mais": o que não coube na barra + identificação + Sair
+    const sheet = document.getElementById('prof-sheet');
+    if (!sheet) return;
+    const extras = items.filter(i => !PROF_TAB_ROTAS_FIXAS.includes(i.id));
+    const profile = AppState.userProfile;
+    sheet.innerHTML = `
+        <div class="prof-sheet-handle" aria-hidden="true"></div>
+        <div class="prof-sheet-user">
+            <div class="user-avatar">${profile?.nome?.charAt(0).toUpperCase() || 'U'}</div>
+            <div>
+                <div class="user-name">${escapeHtml(profile?.nome || '')}</div>
+                <div class="user-role">${fmt.role(AppState.role)}</div>
+            </div>
+        </div>
+        <div class="prof-sheet-list">
+            ${extras.map(item => `
+                <button class="prof-sheet-item" data-route="${item.id}" onclick="closeProfMoreSheet(); Router.navigate('${item.id}')">
+                    <span class="prof-sheet-item-icon">${item.icon}</span>
+                    <span class="prof-sheet-item-label">${item.label}</span>
+                    <span class="prof-sheet-item-chevron" aria-hidden="true">›</span>
+                </button>
+            `).join('')}
+        </div>
+        <button class="prof-sheet-logout" onclick="closeProfMoreSheet(); handleTopbarAvatarClick()">Sair da plataforma</button>
+    `;
+}
+
+function syncProfTabbar(routeId) {
+    document.querySelectorAll('.prof-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.prof-sheet-item').forEach(b => b.classList.remove('active'));
+
+    let alvo = null;
+    if (routeId === 'relatorios')                    alvo = document.getElementById('ptab-cta');
+    else if (PROF_TAB_ROTAS_FIXAS.includes(routeId)) alvo = document.getElementById('ptab-' + routeId);
+    else {
+        // rota que mora dentro da gaveta: acende "Mais" e o item dentro dela
+        alvo = document.getElementById('ptab-more');
+        document.querySelector(`.prof-sheet-item[data-route="${routeId}"]`)?.classList.add('active');
+    }
+    alvo?.classList.add('active');
+}
+
+function openProfMoreSheet() {
+    document.getElementById('prof-sheet-backdrop')?.classList.add('open');
+    const sheet = document.getElementById('prof-sheet');
+    sheet?.classList.add('open');
+    sheet?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('prof-sheet-open');
+}
+
+function closeProfMoreSheet() {
+    document.getElementById('prof-sheet-backdrop')?.classList.remove('open');
+    const sheet = document.getElementById('prof-sheet');
+    sheet?.classList.remove('open');
+    sheet?.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('prof-sheet-open');
+}
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeProfMoreSheet(); });
 
 // ============================================================
 // REGISTRAR ROTAS

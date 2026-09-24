@@ -3591,9 +3591,10 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
        pra sobrar exatamente o espaço da barra, e cola ela no topo/largura
        cheia do main-content (que normalmente tem padding — aqui o chat
        precisa ser "sangria total" pra não sobrar friso em volta). */
-    body.role-aluno .chat-page {
-        margin: -16px -14px calc(-96px - env(safe-area-inset-bottom));
-        height: calc(100vh - var(--header-h) - 96px - env(safe-area-inset-bottom));
+    body.role-aluno .chat-page,
+    body.role-professor .chat-page {
+        margin: -16px -14px calc(0px - var(--tabbar-space) - env(safe-area-inset-bottom));
+        height: calc(100vh - var(--header-h) - var(--tabbar-space) - env(safe-area-inset-bottom));
     }
 
     /* mesmo gradiente roxo usado no resto da experiência do aluno, em vez
@@ -3892,4 +3893,281 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
         animation: none;
         transition: none;
     }
+}
+
+
+/* ============================================================
+   PROFESSOR — visual sóbrio: rótulos sempre visíveis, alvos de toque
+   grandes, movimento discreto. (Aluno usa versão mais lúdica.)
+   ============================================================ */
+
+body.role-aluno     { --tabbar-space: 96px; }
+body.role-professor { --tabbar-space: 104px; }
+
+/* Toasts sobem pra não ficarem atrás das barras flutuantes no celular */
+@media (max-width: 768px) {
+    body.role-aluno #toast-container,
+    body.role-professor #toast-container {
+        bottom: calc(var(--tabbar-space) + 8px + env(safe-area-inset-bottom));
+        right: 12px; left: 12px;
+    }
+}
+
+.prof-tabbar {
+    display: none;
+    position: fixed;
+    left: 12px; right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 150;
+    align-items: stretch;
+    padding: 6px 4px;
+    min-height: 64px;
+    background: rgba(255,255,255,.94);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid rgba(124,58,237,.14);
+    border-radius: 22px;
+    box-shadow: 0 14px 32px -12px rgba(76,29,149,.32), 0 2px 8px rgba(0,0,0,.06);
+}
+
+.prof-tab {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    border-radius: 16px;
+    color: var(--color-text-3);
+    font-family: var(--font);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .2s ease, color .2s ease;
+}
+.prof-tab-icon { font-size: 1.3rem; line-height: 1; }
+.prof-tab-label { font-size: .6875rem; font-weight: 600; line-height: 1.1; white-space: nowrap; }
+.prof-tab:active { background: rgba(124,58,237,.08); }
+.prof-tab.active { color: var(--color-primary); background: rgba(124,58,237,.10); }
+.prof-tab.active .prof-tab-label { font-weight: 700; }
+
+.prof-tab-cta { overflow: visible; background: transparent !important; color: var(--color-primary); }
+.prof-tab-cta-icon {
+    width: 52px; height: 52px;
+    margin-top: -22px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 700;
+    box-shadow: 0 10px 20px -6px rgba(109,40,217,.55), 0 0 0 4px rgba(255,255,255,.94);
+    transition: transform .2s ease;
+}
+.prof-tab-cta:active .prof-tab-cta-icon { transform: scale(.94); }
+.prof-tab-cta.active .prof-tab-label { color: var(--color-primary); font-weight: 700; }
+
+.prof-tab-badge {
+    position: absolute;
+    top: 4px; left: calc(50% + 6px);
+    min-width: 17px; height: 17px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--color-red);
+    color: #fff;
+    font-size: .625rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center; justify-content: center;
+    box-shadow: 0 0 0 2px #fff;
+}
+
+/* Gaveta "Mais" */
+.prof-sheet-backdrop {
+    position: fixed; inset: 0;
+    z-index: 170;
+    background: rgba(24,16,48,.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+}
+.prof-sheet-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.prof-sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 180;
+    max-height: 82vh;
+    overflow-y: auto;
+    padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+    background: #fff;
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -12px 40px -10px rgba(76,29,149,.35);
+    transform: translateY(105%);
+    visibility: hidden;
+    transition: transform .25s cubic-bezier(.4,0,.2,1), visibility 0s linear .25s;
+}
+.prof-sheet.open { transform: translateY(0); visibility: visible; transition-delay: 0s; }
+.prof-sheet-handle { width: 40px; height: 4px; border-radius: 4px; background: var(--color-border, #e5e7eb); margin: 4px auto 14px; }
+.prof-sheet-user { display: flex; align-items: center; gap: 12px; padding: 4px 4px 14px; border-bottom: 1px solid var(--color-border, #eee); }
+.prof-sheet-user .user-avatar { background: linear-gradient(135deg, #6d28d9, #8b5cf6); }
+.prof-sheet-user .user-name { font-weight: 700; font-size: 1rem; }
+.prof-sheet-user .user-role { font-size: .8125rem; color: var(--color-text-3); }
+.prof-sheet-list { padding: 8px 0; }
+.prof-sheet-item {
+    width: 100%;
+    min-height: 56px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 12px;
+    border: none; background: transparent;
+    border-radius: 14px;
+    font-family: var(--font);
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--color-text);
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.prof-sheet-item:active { background: rgba(124,58,237,.08); }
+.prof-sheet-item.active { background: rgba(124,58,237,.10); color: var(--color-primary); font-weight: 700; }
+.prof-sheet-item-icon { font-size: 1.35rem; width: 28px; text-align: center; }
+.prof-sheet-item-label { flex: 1; }
+.prof-sheet-item-chevron { color: var(--color-text-3); font-size: 1.4rem; }
+.prof-sheet-logout {
+    width: 100%; min-height: 52px; margin-top: 6px;
+    border: 1px solid rgba(239,68,68,.35);
+    background: transparent;
+    color: var(--color-red);
+    border-radius: 14px;
+    font-family: var(--font);
+    font-size: 1rem; font-weight: 600;
+    cursor: pointer;
+}
+.prof-sheet-logout:active { background: rgba(239,68,68,.08); }
+body.prof-sheet-open { overflow: hidden; }
+
+@media (max-width: 768px) {
+    body.role-professor #sidebar,
+    body.role-professor .sidebar-toggle { display: none !important; }
+    body.role-professor .main-wrapper { margin-left: 0; }
+    body.role-professor .prof-tabbar { display: flex; }
+    body.role-professor #main-content,
+    body.role-professor .main-content { padding: 16px 14px calc(var(--tabbar-space) + env(safe-area-inset-bottom)); }
+}
+@media (min-width: 769px) {
+    .prof-tabbar, .prof-sheet, .prof-sheet-backdrop { display: none !important; }
+}
+
+/* Sidebar desktop do professor: indicador calmo, alvos maiores, sem stagger */
+.sidebar-nav--prof { position: relative; }
+.sidebar-nav--prof .nav-item {
+    position: relative;
+    z-index: 1;
+    padding: 12px 14px;
+    font-size: .9375rem;
+    min-height: 44px;
+    transition: color var(--transition);
+}
+.sidebar-nav--prof .nav-item.active { background: transparent; color: #fff; }
+.sidebar-nav--prof .sidebar-nav-indicator {
+    background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+    box-shadow: 0 4px 14px -6px rgba(109,40,217,.5);
+    transition: transform .25s cubic-bezier(.4,0,.2,1), width .2s ease, height .2s ease, opacity .2s ease;
+}
+.sidebar-footer--prof {
+    margin: 8px; padding: 12px;
+    border-top: none;
+    border-radius: 14px;
+    background: rgba(124,58,237,.06);
+    border: 1px solid rgba(124,58,237,.12);
+}
+.sidebar-footer--prof .user-avatar { background: linear-gradient(135deg, #6d28d9, #8b5cf6); }
+
+/* Dashboard do professor */
+.prof-hero {
+    border-radius: 18px;
+    padding: 22px;
+    margin-bottom: 18px;
+    background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 55%, #8b5cf6 100%);
+    color: #fff;
+    animation: profFadeUp .3s ease-out backwards;
+}
+.prof-hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.prof-hero-greeting { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; }
+.prof-hero-sub { font-size: .9375rem; color: rgba(255,255,255,.85); margin-top: 3px; }
+.prof-hero-cta {
+    min-height: 44px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 12px;
+    background: #fff;
+    color: #5b21b6;
+    font-family: var(--font);
+    font-size: .9375rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.prof-hero-cta:hover { background: #f5f3ff; }
+.prof-next {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.22);
+}
+.prof-next-label { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.75); margin-bottom: 8px; }
+.prof-next-body { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.prof-next-time { font-size: 1.5rem; font-weight: 800; flex-shrink: 0; }
+.prof-next-info { flex: 1; min-width: 140px; }
+.prof-next-aluno { font-size: 1rem; font-weight: 700; }
+.prof-next-meta { font-size: .875rem; color: rgba(255,255,255,.8); margin-top: 1px; }
+.prof-next-btn {
+    min-height: 44px; display: inline-flex; align-items: center;
+    padding: 0 18px; border-radius: 12px;
+    background: #fff; color: #5b21b6;
+    font-size: .9375rem; font-weight: 700; text-decoration: none;
+}
+.prof-dash-stats { animation: profFadeUp .3s ease-out .05s backwards; }
+.prof-dash-card  { animation: profFadeUp .3s ease-out .1s backwards; }
+.prof-dash-card .aula-card { padding: 14px 16px; }
+.prof-dash-card .aula-aluno { font-size: 1rem; }
+.prof-dash-card .aula-conteudo,
+.prof-dash-card .aula-meta { font-size: .875rem; }
+.prof-dash-card .btn { min-height: 40px; }
+
+@keyframes profFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+    .prof-hero { padding: 18px; }
+    .prof-hero-greeting { font-size: 1.25rem; }
+    .prof-hero-cta { display: none; }
+    .prof-next-btn { width: 100%; justify-content: center; }
+    .prof-dash-card .aula-card { flex-wrap: wrap; }
+    .prof-dash-card .aula-info { flex: 1 1 60%; min-width: 0; }
+    .prof-dash-card .aula-actions { flex: 1 1 100%; display: flex; gap: 8px; }
+    .prof-dash-card .aula-actions .btn,
+    .prof-dash-card .aula-actions .badge { flex: 1; justify-content: center; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .prof-hero, .prof-dash-stats, .prof-dash-card { animation: none; }
+    .prof-sheet, .prof-sheet-backdrop, .sidebar-nav--prof .sidebar-nav-indicator { transition: none; }
+}
+
+@media (max-width: 359px) {
+    .prof-tabbar { left: 8px; right: 8px; padding: 6px 2px; }
+    .prof-tab-label { font-size: .625rem; }
+}
+
+@media (max-width: 359px) {
+    .prof-tabbar { left: 8px; right: 8px; padding: 6px 2px; }
+    .prof-tab-label { font-size: .625rem; }
 }
