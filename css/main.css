@@ -4171,3 +4171,96 @@ body.prof-sheet-open { overflow: hidden; }
     .prof-tabbar { left: 8px; right: 8px; padding: 6px 2px; }
     .prof-tab-label { font-size: .625rem; }
 }
+
+/* ============================================================
+   ADMIN — dashboard reorganizado: hero + central de alertas em
+   abas (antes eram 4 cards empilhados, obrigando muita rolagem)
+   ============================================================ */
+
+.admin-hero {
+    border-radius: 18px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+    background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 55%, #8b5cf6 100%);
+    color: #fff;
+}
+.admin-hero-greeting { font-size: 1.375rem; font-weight: 700; letter-spacing: -.01em; }
+.admin-hero-sub { font-size: .875rem; color: rgba(255,255,255,.85); margin-top: 4px; text-transform: capitalize; }
+
+.admin-dash-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.15fr);
+    gap: 18px;
+    align-items: start;
+}
+.admin-dash-grid > .card { min-width: 0; }
+@media (max-width: 1100px) {
+    .admin-dash-grid { grid-template-columns: 1fr; }
+}
+
+.admin-alert-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 16px 4px;
+}
+.admin-alert-tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: #fff;
+    font-family: var(--font);
+    font-size: .8125rem;
+    font-weight: 600;
+    color: var(--color-text-2);
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.admin-alert-tab:hover:not(.active) { background: var(--color-surface-2); }
+.admin-alert-tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+.admin-alert-tab-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--color-red);
+    color: #fff;
+    font-size: .6875rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.admin-alert-tab.active .admin-alert-tab-count { background: rgba(255,255,255,.28); }
+
+.admin-alert-body { display: none; }
+.admin-alert-body.active { display: block; }
+.admin-alert-body-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 2px;
+}
+.admin-alert-card .notif-msg-list { max-height: 420px; overflow-y: auto; }
+
+.admin-alert-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 40px 20px;
+    color: var(--color-text-3);
+}
+.admin-alert-empty-icon { font-size: 2rem; }
+
+.admin-next-card .card-body { max-height: 460px; overflow-y: auto; }
+
+@media (max-width: 768px) {
+    .admin-hero { padding: 16px 18px; }
+    .admin-hero-greeting { font-size: 1.1875rem; }
+}

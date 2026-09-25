@@ -46,16 +46,25 @@ Modules.Dashboard = {
             Modules.Relatorios.carregarAulasSemRelatorio()
         ]);
 
-        renderContent(`
-            <div class="page-header">
-                <h1 class="page-title">Dashboard</h1>
-                <span class="page-subtitle">${new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' })}</span>
-            </div>
+        // Os 4 alertas viram abas de um único card — antes eram 4 cards
+        // empilhados em página cheia, obrigando a rolar bastante pra
+        // chegar nos números. Só entram na lista as categorias com itens.
+        const abas = [
+            Modules.Dashboard._alertaAulasSemRelatorioTab(alertasSemRelatorio),
+            Modules.Dashboard._alertaCronogramaTab(alertasCronograma),
+            Modules.Dashboard._alertaVencimentosTab(alertasVencimento),
+            Modules.Dashboard._alertaDespesasTab(alertasDespesas),
+        ].filter(Boolean);
+        const totalAlertas = abas.reduce((s, a) => s + a.count, 0);
 
-            ${Modules.Dashboard._alertaAulasSemRelatorioHtml(alertasSemRelatorio)}
-            ${Modules.Dashboard._alertaCronogramaHtml(alertasCronograma)}
-            ${Modules.Dashboard._alertaVencimentosHtml(alertasVencimento)}
-            ${Modules.Dashboard._alertaDespesasVencendoHtml(alertasDespesas)}
+        const primeiroNome = AppState.userProfile?.nome?.split(' ')[0] || '';
+        const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+        renderContent(`
+            <div class="admin-hero">
+                <div class="admin-hero-greeting">Olá, ${escapeHtml(primeiroNome)}</div>
+                <div class="admin-hero-sub">${hoje} · ${totalAlertas > 0 ? `${totalAlertas} ${totalAlertas > 1 ? 'itens pedem' : 'item pede'} atenção` : 'Tudo em dia por aqui'}</div>
+            </div>
 
             <div class="stats-grid">
                 ${Modules.Dashboard._statCard('Alunos Ativos', stats?.total_alunos || 0, '🎓', 'stat-blue')}
@@ -64,31 +73,68 @@ Modules.Dashboard = {
                 ${Modules.Dashboard._statCard('Tarefas Concluídas', stats?.tarefas_concluidas_semana || 0, '✓', 'stat-teal')}
             </div>
 
-            <div class="card">
-                <div class="card-header">
-                    <h3>Próximas Aulas</h3>
-                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
+            <div class="admin-dash-grid">
+                <div class="card admin-alert-card">
+                    <div class="card-header">
+                        <h3>Central de Alertas</h3>
+                    </div>
+                    ${abas.length ? `
+                        <div class="admin-alert-tabs">
+                            ${abas.map((a, i) => `
+                                <button class="admin-alert-tab${i === 0 ? ' active' : ''}" data-tab="${a.id}" onclick="Modules.Dashboard._switchAlertTab('${a.id}')">
+                                    <span>${a.icon} ${a.label}</span>
+                                    <span class="admin-alert-tab-count">${a.count}</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                        ${abas.map((a, i) => `
+                            <div class="admin-alert-body${i === 0 ? ' active' : ''}" data-tab-body="${a.id}">
+                                <div class="admin-alert-body-header">
+                                    <span class="text-muted small">${a.subtitulo}</span>
+                                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('${a.rota}')">Ver todos</button>
+                                </div>
+                                <div class="notif-msg-list">${a.itensHtml}</div>
+                            </div>
+                        `).join('')}
+                    ` : `
+                        <div class="admin-alert-empty">
+                            <div class="admin-alert-empty-icon">✅</div>
+                            <p>Nenhum alerta no momento — tudo em dia.</p>
+                        </div>
+                    `}
                 </div>
-                <div class="card-body">
-                    ${proximasAulas?.length
-                        ? `<table class="table">
-                            <thead><tr><th>Data</th><th>Horário</th><th>Aluno</th><th>Professor</th></tr></thead>
-                            <tbody>
-                                ${proximasAulas.map(a => `
-                                    <tr>
-                                        <td>${fmt.date(a.data)}</td>
-                                        <td>${fmt.time(a.horario)}</td>
-                                        <td>${escapeHtml(a.aluno_nome)}</td>
-                                        <td>${escapeHtml(a.professor_nome)}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>`
-                        : emptyState('Nenhuma aula agendada')
-                    }
+
+                <div class="card admin-next-card">
+                    <div class="card-header">
+                        <h3>Próximas Aulas</h3>
+                        <button class="btn btn-ghost btn-sm" onclick="Router.navigate('agenda')">Ver todas</button>
+                    </div>
+                    <div class="card-body">
+                        ${proximasAulas?.length
+                            ? `<div class="table-responsive"><table class="table">
+                                <thead><tr><th>Data</th><th>Horário</th><th>Aluno</th><th>Professor</th></tr></thead>
+                                <tbody>
+                                    ${proximasAulas.map(a => `
+                                        <tr>
+                                            <td>${fmt.date(a.data)}</td>
+                                            <td>${fmt.time(a.horario)}</td>
+                                            <td>${escapeHtml(a.aluno_nome)}</td>
+                                            <td>${escapeHtml(a.professor_nome)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table></div>`
+                            : emptyState('Nenhuma aula agendada')
+                        }
+                    </div>
                 </div>
             </div>
         `);
+    },
+
+    _switchAlertTab(id) {
+        document.querySelectorAll('.admin-alert-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+        document.querySelectorAll('.admin-alert-body').forEach(b => b.classList.toggle('active', b.dataset.tabBody === id));
     },
 
     async _professor() {
@@ -472,14 +518,14 @@ Modules.Dashboard = {
     },
 
     // ── Alerta: cronograma atrasado ou perto do prazo (admin) ──
-    _alertaCronogramaHtml(alertas) {
-        if (!alertas || alertas.length === 0) return '';
+    _alertaCronogramaTab(alertas) {
+        if (!alertas || alertas.length === 0) return null;
 
         const LIMITE = 8;
         const visiveis = alertas.slice(0, LIMITE);
         const restantes = alertas.length - visiveis.length;
 
-        const itens = visiveis.map(a => {
+        const itensHtml = visiveis.map(a => {
             const emAtraso  = a.atrasadas > 0;
             const textoQtd  = emAtraso
                 ? `${a.atrasadas} tarefa${a.atrasadas > 1 ? 's' : ''} atrasada${a.atrasadas > 1 ? 's' : ''}`
@@ -503,34 +549,20 @@ Modules.Dashboard = {
                     </button>
                 </div>
             `;
-        }).join('');
+        }).join('') + (restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aluno${restantes > 1 ? 's' : ''}…</p>` : '');
 
-        return `
-            <div class="card notif-msg-card" style="border-left:3px solid var(--color-red)">
-                <div class="card-header notif-msg-header">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="notif-msg-dot" style="background:var(--color-red)"></span>
-                        <h3>Alunos com cronograma atrasado ou perto do prazo</h3>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('cronograma')">Ver todos</button>
-                </div>
-                <div class="notif-msg-list">
-                    ${itens}
-                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aluno${restantes > 1 ? 's' : ''}…</p>` : ''}
-                </div>
-            </div>
-        `;
+        return { id: 'cronograma', icon: '📋', label: 'Cronograma', subtitulo: 'Atrasado ou perto do prazo', rota: 'cronograma', count: alertas.length, itensHtml };
     },
 
     // ── Alerta: mensalidades perto de vencer ou já vencidas (admin) ──
-    _alertaVencimentosHtml(alertas) {
-        if (!alertas || alertas.length === 0) return '';
+    _alertaVencimentosTab(alertas) {
+        if (!alertas || alertas.length === 0) return null;
 
         const LIMITE = 8;
         const visiveis = alertas.slice(0, LIMITE);
         const restantes = alertas.length - visiveis.length;
 
-        const itens = visiveis.map(a => {
+        const itensHtml = visiveis.map(a => {
             const atrasado = a.diffDias < 0;
             const texto = atrasado
                 ? `Vencido há ${Math.abs(a.diffDias)} dia${Math.abs(a.diffDias) > 1 ? 's' : ''}`
@@ -548,23 +580,9 @@ Modules.Dashboard = {
                     </div>
                 </div>
             `;
-        }).join('');
+        }).join('') + (restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aluno${restantes > 1 ? 's' : ''}…</p>` : '');
 
-        return `
-            <div class="card notif-msg-card" style="border-left:3px solid var(--color-yellow)">
-                <div class="card-header notif-msg-header">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="notif-msg-dot" style="background:var(--color-yellow)"></span>
-                        <h3>Alunos com mensalidade perto de vencer</h3>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('financeiro')">Ver todos</button>
-                </div>
-                <div class="notif-msg-list">
-                    ${itens}
-                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aluno${restantes > 1 ? 's' : ''}…</p>` : ''}
-                </div>
-            </div>
-        `;
+        return { id: 'vencimentos', icon: '💳', label: 'Mensalidades', subtitulo: 'Perto de vencer ou vencidas', rota: 'financeiro', count: alertas.length, itensHtml };
     },
 
     async _verCronogramaAluno(alunoId) {
@@ -572,14 +590,14 @@ Modules.Dashboard = {
     },
 
     // ── Alerta: despesas perto de vencer ou já vencidas (admin) ──
-    _alertaDespesasVencendoHtml(alertas) {
-        if (!alertas || alertas.length === 0) return '';
+    _alertaDespesasTab(alertas) {
+        if (!alertas || alertas.length === 0) return null;
 
         const LIMITE = 8;
         const visiveis = alertas.slice(0, LIMITE);
         const restantes = alertas.length - visiveis.length;
 
-        const itens = visiveis.map(a => {
+        const itensHtml = visiveis.map(a => {
             const atrasada = a.diffDias < 0;
             const texto = atrasada
                 ? `Vencida há ${Math.abs(a.diffDias)} dia${Math.abs(a.diffDias) > 1 ? 's' : ''}`
@@ -597,34 +615,20 @@ Modules.Dashboard = {
                     </div>
                 </div>
             `;
-        }).join('');
+        }).join('') + (restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} despesa${restantes > 1 ? 's' : ''}…</p>` : '');
 
-        return `
-            <div class="card notif-msg-card" style="border-left:3px solid var(--color-red)">
-                <div class="card-header notif-msg-header">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="notif-msg-dot" style="background:var(--color-red)"></span>
-                        <h3>Despesas perto de vencer</h3>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('financeiro')">Ver todas</button>
-                </div>
-                <div class="notif-msg-list">
-                    ${itens}
-                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} despesa${restantes > 1 ? 's' : ''}…</p>` : ''}
-                </div>
-            </div>
-        `;
+        return { id: 'despesas', icon: '🧾', label: 'Despesas', subtitulo: 'Perto de vencer ou vencidas', rota: 'financeiro', count: alertas.length, itensHtml };
     },
 
     // ── Alerta: aula já dada há mais de 3h sem relatório emitido pelo professor (admin) ──
-    _alertaAulasSemRelatorioHtml(alertas) {
-        if (!alertas || alertas.length === 0) return '';
+    _alertaAulasSemRelatorioTab(alertas) {
+        if (!alertas || alertas.length === 0) return null;
 
         const LIMITE = 8;
         const visiveis = alertas.slice(0, LIMITE);
         const restantes = alertas.length - visiveis.length;
 
-        const itens = visiveis.map(a => {
+        const itensHtml = visiveis.map(a => {
             const texto = a.horasAtraso >= 24
                 ? `Atrasado há ${Math.floor(a.horasAtraso / 24)} dia${Math.floor(a.horasAtraso / 24) > 1 ? 's' : ''}`
                 : `Atrasado há ${a.horasAtraso}h`;
@@ -643,23 +647,9 @@ Modules.Dashboard = {
                     </div>
                 </div>
             `;
-        }).join('');
+        }).join('') + (restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aula${restantes > 1 ? 's' : ''}…</p>` : '');
 
-        return `
-            <div class="card notif-msg-card" style="border-left:3px solid var(--color-red)">
-                <div class="card-header notif-msg-header">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="notif-msg-dot" style="background:var(--color-red)"></span>
-                        <h3>Relatórios pendentes</h3>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('relatorios')">Ver relatórios</button>
-                </div>
-                <div class="notif-msg-list">
-                    ${itens}
-                    ${restantes > 0 ? `<p class="text-muted small" style="padding:8px 16px">e mais ${restantes} aula${restantes > 1 ? 's' : ''}…</p>` : ''}
-                </div>
-            </div>
-        `;
+        return { id: 'relatorios', icon: '📄', label: 'Relatórios pendentes', subtitulo: 'Aula dada há mais de 3h sem relatório', rota: 'relatorios', count: alertas.length, itensHtml };
     },
 
     _respostasHtml(respostas) {
