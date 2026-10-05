@@ -681,6 +681,51 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 .badge-psico-emocional     { background: #fdf4ff; color: #9333ea; }
 .badge-psico-social        { background: var(--color-green-bg); color: var(--color-green); }
 
+/* VISUALIZADOR DE IMAGEM (lightbox) — fica entre os modais e os toasts:
+   um toast disparado com a imagem aberta ainda precisa aparecer por cima */
+.lightbox-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    padding: 32px;
+    background: rgba(17, 11, 34, .88);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+}
+.lightbox-overlay.open { opacity: 1; pointer-events: auto; }
+.lightbox-img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 10px;
+    box-shadow: 0 20px 60px -15px rgba(0,0,0,.6);
+    cursor: default;
+}
+.lightbox-close {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255,255,255,.12);
+    color: #fff;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease;
+}
+.lightbox-close:hover { background: rgba(255,255,255,.22); }
+
+@media (max-width: 640px) {
+    .lightbox-overlay { padding: 16px; }
+    .lightbox-close { top: 10px; right: 10px; }
+}
+
 /* TOASTS */
 #toast-container {
     position: fixed;
@@ -4263,4 +4308,317 @@ body.prof-sheet-open { overflow: hidden; }
 @media (max-width: 768px) {
     .admin-hero { padding: 16px 18px; }
     .admin-hero-greeting { font-size: 1.1875rem; }
+}
+
+/* ============================================================
+   PROTÓTIPO — grade de cards de alunos (substitui a tabela antiga
+   em Alunos/Meus Alunos) + painel unificado de perfil + Mural
+   ============================================================ */
+
+.aluno-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 14px;
+}
+
+.aluno-card {
+    position: relative;
+    padding: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    background: #fff;
+    cursor: pointer;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+    animation: alunoCardGridIn .4s cubic-bezier(.16,1,.3,1) backwards;
+    animation-delay: calc(var(--i, 0) * 40ms);
+}
+.aluno-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 28px -14px rgba(124,58,237,.35);
+    border-color: rgba(124,58,237,.3);
+}
+.aluno-card:active { transform: translateY(-1px) scale(.99); }
+
+@keyframes alunoCardGridIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.aluno-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.aluno-card-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #7c3aed, #a78bfa);
+    color: #fff;
+    font-weight: 700;
+    font-size: 1rem;
+}
+.aluno-card-nome { font-weight: 700; font-size: .9375rem; color: var(--color-text); }
+.aluno-card-meta { font-size: .8125rem; color: var(--color-text-3); margin-top: 2px; }
+.aluno-card-meta-sub { margin-top: 0; }
+.aluno-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border);
+}
+.aluno-card-actions { display: flex; gap: 4px; }
+
+/* ── Perfil unificado do aluno ── */
+
+.perfil-hero {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    border-radius: 18px;
+    padding: 22px;
+    margin-bottom: 18px;
+    background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 55%, #8b5cf6 100%);
+    color: #fff;
+    animation: profFadeUp .3s ease-out backwards;
+}
+.perfil-hero-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.3);
+    font-size: 1.5rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.perfil-hero-info { flex: 1; min-width: 160px; }
+.perfil-hero-nome { font-size: 1.375rem; font-weight: 700; letter-spacing: -.01em; }
+.perfil-hero-meta { font-size: .9375rem; color: rgba(255,255,255,.85); margin-top: 3px; }
+.perfil-hero-inativo { color: #fecaca; font-weight: 700; }
+.perfil-hero-aulas {
+    text-align: center;
+    padding: 10px 18px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.22);
+}
+.perfil-hero-aulas-num { font-size: 1.5rem; font-weight: 800; line-height: 1; }
+.perfil-hero-aulas-label { font-size: .6875rem; color: rgba(255,255,255,.8); margin-top: 2px; }
+
+.perfil-hero-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.perfil-hero-insights-btn {
+    min-height: 44px;
+    padding: 0 18px;
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 12px;
+    background: rgba(255,255,255,.12);
+    color: #fff;
+    font-family: var(--font);
+    font-size: .875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s ease;
+}
+.perfil-hero-insights-btn:hover { background: rgba(255,255,255,.22); }
+
+.perfil-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+}
+.perfil-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    overflow: hidden;
+    animation: profFadeUp .3s ease-out backwards;
+    animation-delay: calc(var(--i, 0) * 70ms);
+}
+.perfil-card-mural { grid-column: 1 / -1; }
+.perfil-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-2);
+}
+.perfil-card-icon { font-size: 1.1rem; }
+.perfil-card-header h3 { font-size: .9375rem; margin: 0; }
+.perfil-card-body { padding: 16px 18px; }
+.perfil-card-footnote { font-size: .75rem; color: var(--color-text-3); }
+.perfil-psico-texto { font-size: .9375rem; line-height: 1.5; white-space: pre-wrap; }
+.perfil-aula-detalhe { font-size: .875rem; margin-top: 8px; line-height: 1.5; }
+
+/* ── Mural (fotos: ciclo de assuntos + boletim) ── */
+
+.mural-section-card { margin-bottom: 18px; }
+.mural-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+@media (max-width: 640px) {
+    .mural-form { grid-template-columns: 1fr; }
+}
+
+.mural-feed { min-height: 40px; }
+.mural-photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+.mural-feed-compact.mural-photo-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+
+.mural-photo-card {
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--color-surface-2);
+    animation: profFadeUp .25s ease-out backwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+}
+.mural-photo-img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    background: var(--color-border);
+    cursor: zoom-in;
+    transition: opacity .15s ease;
+}
+.mural-photo-img:hover { opacity: .88; }
+.mural-photo-erro {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: .75rem;
+    color: var(--color-text-3);
+    padding: 10px;
+}
+.mural-photo-legenda { font-size: .8125rem; padding: 8px 10px 0; line-height: 1.4; }
+.mural-photo-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px 10px;
+}
+.mural-post-date { font-size: .6875rem; color: var(--color-text-3); }
+
+.perfil-card-boletim .perfil-card-header { background: #fef2f2; }
+
+@media (prefers-reduced-motion: reduce) {
+    .aluno-card, .perfil-hero, .perfil-card, .mural-photo-card { animation: none; }
+}
+
+/* ============================================================
+   MENTOR — "Minha Semana": controle semanal em quadrados
+   ============================================================ */
+
+.msem-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.msem-mentor-select-card { margin-bottom: 18px; }
+.msem-mentor-select-body { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.msem-mentor-select-body .form-label { margin: 0; }
+.msem-mentor-select-body select { max-width: 320px; }
+
+.msem-progress-card { margin-bottom: 18px; }
+.msem-progress-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.msem-progress-text { font-size: .9375rem; }
+.msem-progress-pct { font-size: 1.125rem; font-weight: 800; color: var(--color-primary); }
+.msem-progress-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--color-surface-2);
+    overflow: hidden;
+}
+.msem-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #7c3aed, #a78bfa);
+    transition: width .35s cubic-bezier(.4,0,.2,1);
+}
+
+.msem-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+}
+
+.msem-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 18px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    background: #fff;
+    animation: alunoCardGridIn .35s cubic-bezier(.16,1,.3,1) backwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+.msem-card-done {
+    border-color: rgba(22,163,74,.35);
+    background: #f0fdf4;
+}
+
+.msem-card-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #7c3aed, #a78bfa);
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.0625rem;
+}
+.msem-card-done .msem-card-avatar { background: linear-gradient(135deg, #16a34a, #4ade80); }
+
+.msem-card-nome { font-weight: 700; font-size: .9375rem; line-height: 1.25; }
+
+.msem-btn-marcar { width: 100%; }
+
+.msem-card-status { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; }
+.msem-check {
+    font-size: .8125rem;
+    font-weight: 700;
+    color: #15803d;
+    animation: msemCheckPop .3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes msemCheckPop {
+    from { transform: scale(.6); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+.msem-card-data { font-size: .6875rem; color: var(--color-text-3); }
+.msem-btn-desfazer { margin-top: 2px; color: var(--color-text-3); }
+
+.msem-pendente { font-size: .8125rem; color: var(--color-text-3); font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+    .msem-card, .msem-check, .msem-progress-fill { animation: none; transition: none; }
 }

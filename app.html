@@ -19,6 +19,13 @@
     <!-- TOAST CONTAINER -->
     <div id="toast-container"></div>
 
+    <!-- VISUALIZADOR DE IMAGEM EM TELA CHEIA (dentro da própria plataforma,
+         sem abrir aba nova) — usado por Mural e pelo perfil do aluno -->
+    <div class="lightbox-overlay" id="lightbox-overlay" onclick="closeLightbox(event)">
+        <button class="lightbox-close" onclick="closeLightbox(event)" aria-label="Fechar">×</button>
+        <img class="lightbox-img" id="lightbox-img" alt="" onclick="event.stopPropagation()" />
+    </div>
+
     <!-- APP LAYOUT -->
     <div class="app-layout">
 
@@ -88,10 +95,10 @@
     <!-- Módulos -->
     <script src="js/modules/dashboard.js?v=7"></script>
     <script src="js/modules/usuarios.js?v=3"></script>
-    <script src="js/modules/alunos.js?v=1"></script>
+    <script src="js/modules/alunos.js?v=2"></script>
     <script src="js/modules/agenda.js?v=9"></script>
     <script src="js/modules/relatorios.js?v=8"></script>
-    <script src="js/modules/insights.js?v=4"></script>
+    <script src="js/modules/insights.js?v=5"></script>
     <script src="js/modules/cronograma.js?v=2"></script>
     <script src="js/modules/atividades.js?v=2"></script>
     <script src="js/modules/financeiro.js?v=11"></script>
@@ -100,9 +107,12 @@
     <script src="js/modules/auditoria.js"></script>
     <script src="js/modules/psicopedagogia.js"></script>
     <script src="js/modules/chat.js?v=2"></script>
+    <script src="js/modules/mural.js?v=4"></script>
+    <script src="js/modules/aluno-perfil.js?v=4"></script>
+    <script src="js/modules/mentoria-semana.js?v=2"></script>
 
     <!-- Roteador e inicializador principal -->
-    <script src="js/app.js?v=3"></script>
+    <script src="js/app.js?v=5"></script>
 
     <!-- Inicializa EmailJS uma única vez -->
     <script>

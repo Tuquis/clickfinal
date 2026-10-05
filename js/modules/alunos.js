@@ -7,14 +7,14 @@ Modules.Alunos = {
     _filter: '',
 
     async render() {
-        if (!Auth.requireRole('admin', 'psicopedagoga')) return;
+        if (!Auth.requireRole('admin', 'psicopedagoga', 'professor')) return;
 
         renderContent(`
             <div class="page-header">
-                <h1 class="page-title">Alunos</h1>
+                <h1 class="page-title">${Auth.can('professor') ? 'Meus Alunos' : 'Alunos'}</h1>
                 ${Auth.can('admin') ? `<button class="btn btn-primary" onclick="Router.navigate('usuarios')">+ Novo Aluno</button>` : ''}
             </div>
-            <div class="card">
+            <div class="card alunos-grid-card">
                 <div class="card-toolbar">
                     <input type="text" class="input input-search" placeholder="Buscar aluno..."
                         oninput="Modules.Alunos._onSearch(this.value)" />
@@ -76,10 +76,28 @@ Modules.Alunos = {
         const container = document.getElementById('alunos-list');
         if (!container) return;
 
+        // Professor só vê os alunos que já teve/tem aula agendada — os demais
+        // perfis (admin/psicopedagoga) seguem vendo a base inteira, igual hoje.
+        let idsEscopo = null;
+        if (Auth.can('professor')) {
+            const { data: aulas } = await supabase
+                .from('v_agenda_completa')
+                .select('aluno_id')
+                .eq('professor_id', AppState.userProfile.id);
+            idsEscopo = [...new Set((aulas || []).map(a => a.aluno_id).filter(Boolean))];
+
+            if (idsEscopo.length === 0) {
+                container.innerHTML = emptyState('Você ainda não teve aula com nenhum aluno');
+                return;
+            }
+        }
+
         let query = supabase
             .from('v_alunos_completo')
             .select('*', { count: 'exact' })
             .order('nome');
+
+        if (idsEscopo) query = query.in('id', idsEscopo);
 
         if (this._filter) {
             query = query.or(`nome.ilike.%${this._filter}%,email.ilike.%${this._filter}%,responsavel.ilike.%${this._filter}%`);
@@ -98,54 +116,35 @@ Modules.Alunos = {
         const totalPages = Math.ceil((count || 0) / APP_CONFIG.paginationSize);
 
         container.innerHTML = `
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Nome</th>
-                        <th>Série</th>
-                        <th>Disciplina</th>
-                        <th>Responsável</th>
-                        <th>Telefone</th>
-                        ${Auth.can('admin') ? '<th>Aulas</th>' : ''}
-                        <th>Status</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data?.length
-                        ? data.map(a => `
-                            <tr>
-                                <td>
-                                    <div class="user-cell">
-                                        <div class="avatar-sm">${a.nome.charAt(0).toUpperCase()}</div>
-                                        <span>${escapeHtml(a.nome)}</span>
-                                    </div>
-                                </td>
-                                <td>${escapeHtml(a.serie || '—')}</td>
-                                <td>${escapeHtml(a.disciplina || '—')}</td>
-                                <td>${escapeHtml(a.responsavel || '—')}</td>
-                                <td>${escapeHtml(a.telefone || '—')}</td>
+            <div class="aluno-card-grid">
+                ${data?.length
+                    ? data.map((a, i) => `
+                        <div class="aluno-card" style="--i:${i}" onclick="Router.navigate('aluno-perfil', { alunoId: '${a.id}' })">
+                            <div class="aluno-card-top">
+                                <div class="aluno-card-avatar">${escapeHtml(a.nome.charAt(0).toUpperCase())}</div>
+                                ${a.ativo ? badge('Ativo','badge-success') : badge('Inativo','badge-secondary')}
+                            </div>
+                            <div class="aluno-card-nome">${escapeHtml(a.nome)}</div>
+                            <div class="aluno-card-meta">${escapeHtml(a.serie || 'Série não informada')}</div>
+                            ${a.disciplina ? `<div class="aluno-card-meta aluno-card-meta-sub">${escapeHtml(a.disciplina)}</div>` : ''}
+                            <div class="aluno-card-footer">
                                 ${Auth.can('admin') ? `
-                                <td>
                                     <span class="aulas-badge ${(a.aulas_disponiveis || 0) === 0 ? 'aulas-zero' : ''}">
-                                        ${a.aulas_disponiveis || 0}
+                                        ${a.aulas_disponiveis || 0} aula${(a.aulas_disponiveis || 0) === 1 ? '' : 's'}
                                     </span>
-                                </td>` : ''}
-                                <td>${a.ativo ? badge('Ativo','badge-success') : badge('Inativo','badge-secondary')}</td>
-                                <td>
-                                    <div class="action-btns">
-                                        <button class="btn btn-ghost btn-sm" onclick="Modules.Alunos.openDetalhe('${a.id}')">Ficha</button>
-                                        ${Auth.can('admin') ? `
-                                            <button class="btn btn-ghost btn-sm" onclick="Modules.Alunos.openAddAulas('${a.id}')">+ Aulas</button>
-                                        ` : ''}
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('')
-                        : `<tr><td colspan="8">${emptyState('Nenhum aluno encontrado')}</td></tr>`
-                    }
-                </tbody>
-            </table>
+                                ` : '<span></span>'}
+                                <div class="aluno-card-actions" onclick="event.stopPropagation()">
+                                    <button class="btn btn-ghost btn-sm" onclick="Modules.Alunos.openDetalhe('${a.id}')" title="Ficha em PDF">📄</button>
+                                    ${Auth.can('admin') ? `
+                                        <button class="btn btn-ghost btn-sm" onclick="Modules.Alunos.openAddAulas('${a.id}')" title="Adicionar aulas">+</button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')
+                    : emptyState('Nenhum aluno encontrado')
+                }
+            </div>
             ${paginationHtml(this._page, totalPages, 'Modules.Alunos._goPage')}
         `;
     },
@@ -213,7 +212,7 @@ Modules.Alunos = {
                     ? relatorios.map(r => `
                         <div class="relatorio-mini">
                             <div class="relatorio-mini-header">
-                                <span>${fmt.date(r.created_at)}</span>
+                                <span>${fmt.datetime(r.created_at)}</span>
                                 ${badge(r.comportamento, 'badge-secondary')}
                                 ${badge(r.compreensao, 'badge-secondary')}
                             </div>

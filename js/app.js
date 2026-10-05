@@ -45,11 +45,13 @@ const SIDEBAR_ITEMS = {
         { id: 'relatorios',      icon: '📄', label: 'Relatórios' },
         { id: 'insights',        icon: '📊', label: 'Insights' },
         { id: 'psicopedagogia',  icon: '🧠', label: 'Psicopedagogia' },
+        { id: 'mentoria-semana', icon: '✅', label: 'Mentoria Semanal' },
         { id: 'auditoria',       icon: '🔍', label: 'Auditoria' },
     ],
     professor: [
         { id: 'dashboard',      icon: '⊞', label: 'Dashboard' },
         { id: 'agenda',         icon: '📅', label: 'Minha Agenda' },
+        { id: 'alunos',         icon: '🎓', label: 'Meus Alunos' },
         { id: 'professores',    icon: '🏫', label: 'Total de Aulas' },
         { id: 'relatorios',     icon: '📄', label: 'Lançar Aula' },
         { id: 'atividades',     icon: '📝', label: 'Enviar Atividade' },
@@ -61,6 +63,7 @@ const SIDEBAR_ITEMS = {
         { id: 'agenda',         icon: '📅', label: 'Minhas Aulas' },
         { id: 'cronograma',     icon: '📋', label: 'Cronograma' },
         { id: 'atividades',     icon: '📝', label: 'Atividades' },
+        { id: 'mural',          icon: '📌', label: 'Mural' },
         { id: 'chat',           icon: '💬', label: 'Chat', badge: true },
     ],
     psicopedagoga: [
@@ -71,8 +74,9 @@ const SIDEBAR_ITEMS = {
         { id: 'psicopedagogia', icon: '🧠', label: 'Iniciar Consulta' },
     ],
     mentor: [
-        { id: 'dashboard', icon: '⊞', label: 'Dashboard' },
-        { id: 'agenda',    icon: '📅', label: 'Agenda' },
+        { id: 'dashboard',        icon: '⊞', label: 'Dashboard' },
+        { id: 'mentoria-semana',  icon: '✅', label: 'Minha Semana' },
+        { id: 'agenda',           icon: '📅', label: 'Agenda' },
     ]
 };
 
@@ -298,6 +302,9 @@ function registerRoutes() {
     reg('auditoria',       Modules.Auditoria);
     reg('psicopedagogia',  Modules.Psicopedagogia);
     reg('chat',            Modules.Chat);
+    reg('mural',           Modules.Mural);
+    reg('aluno-perfil',    Modules.AlunoPerfil);
+    reg('mentoria-semana', Modules.MentoriaSemana);
 
     if (missing.length) {
         console.warn('Módulos não carregados:', missing.join(', '), '— recarregue a página.');

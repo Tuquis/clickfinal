@@ -99,6 +99,35 @@ document.addEventListener('click', (e) => {
 });
 
 // ============================================================
+// VISUALIZADOR DE IMAGEM (lightbox) — abre a foto por cima da
+// própria plataforma em vez de uma aba nova do navegador. Reaproveite
+// isso em qualquer lugar que mostre fotos (ex: Mural, perfil do aluno).
+// ============================================================
+function openLightbox(url, alt = '') {
+    const overlay = document.getElementById('lightbox-overlay');
+    const img = document.getElementById('lightbox-img');
+    if (!overlay || !img) return;
+    img.src = url;
+    img.alt = alt;
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox(e) {
+    // Clique na própria imagem não fecha — só no fundo ou no ×
+    if (e && e.target && e.target.id === 'lightbox-img') return;
+    const overlay = document.getElementById('lightbox-overlay');
+    const img = document.getElementById('lightbox-img');
+    overlay?.classList.remove('open');
+    document.body.style.overflow = '';
+    if (img) img.src = '';
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeLightbox();
+});
+
+// ============================================================
 // CONFIRMAÇÃO
 // ============================================================
 function confirmAction(message) {

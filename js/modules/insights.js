@@ -40,13 +40,16 @@ Modules.Insights = {
         comunicacao:   'Comunicação e expressão'
     },
 
-    async render() {
+    async render(params = {}) {
         if (!Auth.can('admin')) return;
 
         renderContent(`
             <div class="page-header">
-                <h1 class="page-title">Insights</h1>
-                <span class="page-subtitle">Painel de análise por aluno — baseado no histórico de relatórios</span>
+                <div>
+                    <h1 class="page-title">Insights</h1>
+                    <span class="page-subtitle">Painel de análise por aluno — baseado no histórico de relatórios</span>
+                </div>
+                ${params.alunoId ? `<button class="btn btn-ghost btn-sm" onclick="Router.navigate('aluno-perfil', { alunoId: '${params.alunoId}' })">← Voltar ao perfil</button>` : ''}
             </div>
 
             <div class="card" style="margin-bottom:20px;">
@@ -86,6 +89,13 @@ Modules.Insights = {
         if (sel) {
             sel.innerHTML = `<option value="">Selecione um aluno...</option>` +
                 this._allAlunos.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join('');
+        }
+
+        // Veio direto do perfil unificado do aluno — já abre carregado,
+        // sem o admin precisar escolher de novo no dropdown.
+        if (params.alunoId && sel) {
+            sel.value = params.alunoId;
+            await this._onAlunoChange(params.alunoId);
         }
     },
 
