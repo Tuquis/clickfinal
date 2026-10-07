@@ -2,6 +2,29 @@
 // ENSINOCLICK — ROTEADOR E INICIALIZAÇÃO PRINCIPAL
 // ============================================================
 
+// Guarda a última rota visitada (só dura a aba/sessão) pra, se a página
+// for recarregada (F5), voltar pra onde estava em vez de cair sempre no
+// dashboard. Fica em sessionStorage de propósito — não em localStorage —
+// pra não ressuscitar rota antiga numa aba/sessão nova depois do login.
+const LAST_ROUTE_KEY = 'ensinoclick_last_route';
+
+function saveLastRoute(name, params) {
+    try { sessionStorage.setItem(LAST_ROUTE_KEY, JSON.stringify({ name, params })); } catch (_) {}
+}
+
+function clearLastRoute() {
+    try { sessionStorage.removeItem(LAST_ROUTE_KEY); } catch (_) {}
+}
+
+function getLastRoute() {
+    try {
+        const raw = sessionStorage.getItem(LAST_ROUTE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+        return null;
+    }
+}
+
 const Router = {
     routes: {},
     currentRoute: null,
@@ -19,6 +42,7 @@ const Router = {
         try {
             Router.currentRoute = name;
             setActiveSidebarItem(name);
+            saveLastRoute(name, params);
             await Router.routes[name](params);
         } catch (err) {
             console.error('Erro na rota:', err);
@@ -40,6 +64,7 @@ const SIDEBAR_ITEMS = {
         { id: 'professores',     icon: '🏫', label: 'Professores' },
         { id: 'agenda',          icon: '📅', label: 'Agenda' },
         { id: 'cronograma',      icon: '📋', label: 'Cronograma' },
+        { id: 'atividades',      icon: '📝', label: 'Atividades' },
         { id: 'disponibilidade', icon: '🕐', label: 'Disponibilidade' },
         { id: 'financeiro',      icon: '💰', label: 'Financeiro' },
         { id: 'relatorios',      icon: '📄', label: 'Relatórios' },
@@ -326,7 +351,16 @@ async function initApp() {
 
         renderSidebar();
         registerRoutes();
-        await Router.navigate('dashboard');
+
+        // Reload (F5) volta pra onde o usuário estava, não pro dashboard —
+        // só restaura se a rota ainda existir (evita tela em branco se um
+        // módulo foi removido/renomeado entre uma visita e outra).
+        const lastRoute = getLastRoute();
+        if (lastRoute && Router.routes[lastRoute.name]) {
+            await Router.navigate(lastRoute.name, lastRoute.params || {});
+        } else {
+            await Router.navigate('dashboard');
+        }
 
         // Inicia badge de mensagens não lidas (persiste em todas as páginas)
         const uid  = AppState.userProfile?.id;

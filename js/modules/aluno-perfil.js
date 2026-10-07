@@ -7,12 +7,25 @@
 
 Modules.AlunoPerfil = {
 
+    // Ciclo de assuntos dividido por unidade — visível pra admin,
+    // psicopedagoga e professor (mesma regra de sempre, só que agora
+    // em 4 cards em vez de 1).
+    _TIPOS_CICLO: [
+        { tipo: 'ciclo_assuntos_1', titulo: 'Ciclo de assuntos — 1ª Unidade', vazio: 'Nada postado na 1ª unidade ainda' },
+        { tipo: 'ciclo_assuntos_2', titulo: 'Ciclo de assuntos — 2ª Unidade', vazio: 'Nada postado na 2ª unidade ainda' },
+        { tipo: 'ciclo_assuntos_3', titulo: 'Ciclo de assuntos — 3ª Unidade', vazio: 'Nada postado na 3ª unidade ainda' },
+        { tipo: 'ciclo_assuntos_4', titulo: 'Ciclo de assuntos — 4ª Unidade', vazio: 'Nada postado na 4ª unidade ainda' },
+    ],
+
     // Só visíveis pra admin (mesma regra de RLS do banco) — qualquer
-    // tipo de post que não seja "ciclo_assuntos" cai aqui.
+    // tipo de post que não comece com "ciclo_assuntos" cai aqui.
     _TIPOS_RESTRITOS: [
         { tipo: 'calendario_avaliacoes', titulo: 'Calendário de avaliações',    icon: '🗓️', vazio: 'Nenhum calendário de avaliações postado ainda' },
         { tipo: 'calendario_aulas',      titulo: 'Calendário de aulas semanal', icon: '📆', vazio: 'Nenhum calendário de aulas postado ainda' },
-        { tipo: 'boletim',               titulo: 'Boletim',                    icon: '🔒', vazio: 'Nenhum boletim postado ainda' },
+        { tipo: 'boletim_1',             titulo: 'Boletim — 1ª Unidade',        icon: '🔒', vazio: 'Boletim da 1ª unidade ainda não postado' },
+        { tipo: 'boletim_2',             titulo: 'Boletim — 2ª Unidade',        icon: '🔒', vazio: 'Boletim da 2ª unidade ainda não postado' },
+        { tipo: 'boletim_3',             titulo: 'Boletim — 3ª Unidade',        icon: '🔒', vazio: 'Boletim da 3ª unidade ainda não postado' },
+        { tipo: 'boletim_4',             titulo: 'Boletim — 4ª Unidade',        icon: '🔒', vazio: 'Boletim da 4ª unidade ainda não postado' },
     ],
 
     async render(params = {}) {
@@ -53,7 +66,10 @@ Modules.AlunoPerfil = {
             return;
         }
 
-        const postsCiclo = (posts || []).filter(p => p.tipo === 'ciclo_assuntos').slice(0, 12);
+        const ciclos = Modules.AlunoPerfil._TIPOS_CICLO.map(def => ({
+            ...def,
+            posts: (posts || []).filter(p => p.tipo === def.tipo).slice(0, 12)
+        }));
         const restritos = podeVerRestrito
             ? Modules.AlunoPerfil._TIPOS_RESTRITOS.map(def => ({
                 ...def,
@@ -61,7 +77,7 @@ Modules.AlunoPerfil = {
             }))
             : [];
 
-        const urlByPath = await Modules.AlunoPerfil._signedUrls([...postsCiclo, ...restritos.flatMap(r => r.posts)]);
+        const urlByPath = await Modules.AlunoPerfil._signedUrls([...ciclos.flatMap(c => c.posts), ...restritos.flatMap(r => r.posts)]);
 
         container.innerHTML = `
             <div class="perfil-hero">
@@ -92,9 +108,29 @@ Modules.AlunoPerfil = {
             <div class="perfil-grid">
                 ${Modules.AlunoPerfil._cardPsico(ultimaConsulta)}
                 ${Modules.AlunoPerfil._cardUltimaAula(ultimoRelatorio)}
-                ${Modules.AlunoPerfil._cardMural(postsCiclo, urlByPath)}
-                ${restritos.map((r, i) => Modules.AlunoPerfil._cardRestrito(r, urlByPath, i + 3)).join('')}
             </div>
+
+            <div class="mural-grupo">
+                <div class="mural-grupo-header">
+                    <h2 class="mural-grupo-titulo">📌 Mural</h2>
+                    <p class="mural-grupo-subtitulo">Ciclo de assuntos por unidade — a psicopedagoga e o professor também veem.</p>
+                </div>
+                <div class="perfil-grid">
+                    ${ciclos.map((c, i) => Modules.AlunoPerfil._cardCiclo(c, urlByPath, i)).join('')}
+                </div>
+            </div>
+
+            ${restritos.length ? `
+                <div class="mural-grupo mural-grupo-restrito">
+                    <div class="mural-grupo-header">
+                        <h2 class="mural-grupo-titulo">🔒 Acesso restrito — só administração</h2>
+                        <p class="mural-grupo-subtitulo">Calendários e boletim por unidade.</p>
+                    </div>
+                    <div class="perfil-grid">
+                        ${restritos.map((r, i) => Modules.AlunoPerfil._cardRestrito(r, urlByPath, i)).join('')}
+                    </div>
+                </div>
+            ` : ''}
         `;
 
         container.querySelectorAll('[data-lightbox-url]').forEach(img => {
@@ -139,10 +175,10 @@ Modules.AlunoPerfil = {
                     <h3>Como esse aluno aprende melhor</h3>
                 </div>
                 <div class="perfil-card-body">
-                    ${c?.estrategias
-                        ? `<p class="perfil-psico-texto">${escapeHtml(c.estrategias)}</p>
+                    ${c?.como_aprende_melhor
+                        ? `<p class="perfil-psico-texto">${escapeHtml(c.como_aprende_melhor)}</p>
                            <div class="perfil-card-footnote">Registrado pela psicopedagoga em ${fmt.date(c.data)}</div>`
-                        : emptyState('Nenhuma estratégia registrada pela psicopedagoga ainda')
+                        : emptyState('A psicopedagoga ainda não registrou como esse aluno aprende melhor')
                     }
                 </div>
             </div>
@@ -172,15 +208,15 @@ Modules.AlunoPerfil = {
         `;
     },
 
-    _cardMural(posts, urlByPath) {
+    _cardCiclo(def, urlByPath, i) {
         return `
-            <div class="perfil-card perfil-card-mural" style="--i:2">
+            <div class="perfil-card perfil-card-mural" style="--i:${i}">
                 <div class="perfil-card-header">
                     <span class="perfil-card-icon">📌</span>
-                    <h3>Mural — ciclo de assuntos</h3>
+                    <h3>${escapeHtml(def.titulo)}</h3>
                 </div>
                 <div class="perfil-card-body">
-                    ${Modules.AlunoPerfil._photoGrid(posts, urlByPath, 'O aluno ainda não postou fotos do que está estudando')}
+                    ${Modules.AlunoPerfil._photoGrid(def.posts, urlByPath, def.vazio)}
                 </div>
             </div>
         `;
@@ -194,7 +230,6 @@ Modules.AlunoPerfil = {
                     <h3>${escapeHtml(def.titulo)}</h3>
                 </div>
                 <div class="perfil-card-body">
-                    <p class="text-muted small" style="margin-bottom:10px;">Visível só para a administração.</p>
                     ${Modules.AlunoPerfil._photoGrid(def.posts, urlByPath, def.vazio)}
                 </div>
             </div>

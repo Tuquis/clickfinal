@@ -83,7 +83,7 @@ Modules.Psicopedagogia = {
             .from('consultas_psico')
             .select(`
                 id, data, areas_trabalhadas, humor_aluno, engajamento,
-                observacoes, estrategias, recomendacoes_familia, encaminhamentos,
+                observacoes, como_aprende_melhor, estrategias, recomendacoes_familia, encaminhamentos,
                 aluno:usuarios!consultas_psico_aluno_id_fkey(nome),
                 psico:usuarios!consultas_psico_psico_id_fkey(nome)
             `, { count: 'exact' })
@@ -440,63 +440,20 @@ Modules.Psicopedagogia = {
             </div>
 
             <div class="rel-section">
-                <div class="rel-section-title">🧩 Áreas trabalhadas na sessão</div>
-                <div class="check-grid">
-                    ${[
-                        ['cognitivo','Cognitivo'],['emocional','Emocional'],
-                        ['comportamental','Comportamental'],['social','Social'],
-                        ['aprendizagem','Aprendizagem'],['atencao','Atenção / Foco'],
-                        ['linguagem','Linguagem'],
-                    ].map(([v,l]) => `
-                        <label class="check-item">
-                            <input type="checkbox" value="${v}" class="cp-area-check" /> ${l}
-                        </label>`).join('')}
-                </div>
+                <div class="rel-section-title">🧠 Como esse aluno aprende melhor? *</div>
+                <textarea class="input textarea" id="cp-aprende-melhor" rows="4"
+                    placeholder="Ex: responde melhor a explicações visuais, precisa de pausas curtas, aprende melhor repetindo em voz alta..."></textarea>
+                <p class="text-muted small" style="margin-top:4px">
+                    Isso aparece no perfil do aluno pra professores e admin.
+                </p>
             </div>
 
             <div class="rel-section">
-                <div class="rel-section-title">😊 Humor / Estado emocional do aluno</div>
-                <div class="radio-list" style="flex-direction:row;flex-wrap:wrap;gap:16px">
-                    ${[['tranquilo','Tranquilo'],['motivado','Motivado'],['ansioso','Ansioso'],
-                       ['agitado','Agitado'],['triste','Triste']].map(([v,l]) => `
-                        <label class="radio-item">
-                            <input type="radio" name="cp-humor" value="${v}" /> ${l}
-                        </label>`).join('')}
-                </div>
-            </div>
-
-            <div class="rel-section">
-                <div class="rel-section-title">⚡ Engajamento na sessão</div>
-                <div class="radio-list" style="flex-direction:row;gap:24px">
-                    ${[['alto','Alto'],['medio','Médio'],['baixo','Baixo']].map(([v,l]) => `
-                        <label class="radio-item">
-                            <input type="radio" name="cp-engaj" value="${v}" /> ${l}
-                        </label>`).join('')}
-                </div>
-            </div>
-
-            <div class="rel-section">
-                <div class="rel-section-title">📝 Iniciar Consulta — Anotações da sessão *</div>
-                <textarea class="input textarea" id="cp-obs" rows="4"
-                    placeholder="Descreva o que foi observado durante a consulta..."></textarea>
-            </div>
-
-            <div class="rel-section">
-                <div class="rel-section-title">🛠️ Estratégias utilizadas</div>
-                <textarea class="input textarea" id="cp-estrategias" rows="3"
-                    placeholder="Técnicas, jogos, dinâmicas aplicadas na sessão..."></textarea>
-            </div>
-
-            <div class="rel-section">
-                <div class="rel-section-title">🏠 Recomendações para a família</div>
-                <textarea class="input textarea" id="cp-recom" rows="3"
-                    placeholder="Orientações e atividades para o ambiente familiar..."></textarea>
-            </div>
-
-            <div class="rel-section">
-                <div class="rel-section-title">📌 Encaminhamentos</div>
-                <textarea class="input textarea" id="cp-encam" rows="2"
-                    placeholder="Encaminhamentos para outros especialistas, escola, etc..."></textarea>
+                <div class="rel-section-title">📎 Anexo da consulta *</div>
+                <input type="file" class="input" id="cp-anexo" accept="image/*,.pdf" />
+                <p class="text-muted small" style="margin-top:4px">
+                    Foto ou PDF da consulta — fica visível só pra administração e psicopedagogas.
+                </p>
             </div>
         `;
     },
@@ -504,36 +461,34 @@ Modules.Psicopedagogia = {
     async encerrarConsulta() {
         const alunoId  = (document.getElementById('cp-aluno')?.value  || '').trim();
         const data     = (document.getElementById('cp-data')?.value   || '').trim();
-        const obs      = (document.getElementById('cp-obs')?.value    || '').trim();
-        const humor    = document.querySelector('input[name="cp-humor"]:checked')?.value  || null;
-        const engaj    = document.querySelector('input[name="cp-engaj"]:checked')?.value  || null;
-        const estrateg = (document.getElementById('cp-estrategias')?.value || '').trim();
-        const recom    = (document.getElementById('cp-recom')?.value   || '').trim();
-        const encam    = (document.getElementById('cp-encam')?.value   || '').trim();
-        const areas    = Array.from(document.querySelectorAll('.cp-area-check:checked')).map(el => el.value);
+        const aprendeMelhor = (document.getElementById('cp-aprende-melhor')?.value || '').trim();
+        const file     = document.getElementById('cp-anexo')?.files[0];
 
         if (!alunoId) return showToast('Selecione o aluno', 'error');
         if (!data)    return showToast('Informe a data da consulta', 'error');
-        if (!obs)     return showToast('Preencha as anotações da sessão', 'error');
+        if (!aprendeMelhor) return showToast('Preencha como esse aluno aprende melhor', 'error');
+        if (!file)    return showToast('Anexe um arquivo da consulta', 'error');
 
         const btn = document.getElementById('btn-encerrar-consulta');
         if (btn) btn.disabled = true;
         try {
-            const { error } = await supabase.from('consultas_psico').insert({
-                psico_id:             AppState.userProfile.id,
-                aluno_id:             alunoId,
+            const safeName = sanitizeStorageName(file.name);
+            const path = `${AppState.userProfile.id}/${Date.now()}-${safeName}`;
+
+            const { error: upErr } = await supabase.storage.from('consultas-psico').upload(path, file, { upsert: false });
+            if (upErr) throw upErr;
+
+            const { data: inserido, error } = await supabase.from('consultas_psico').insert({
+                psico_id:            AppState.userProfile.id,
+                aluno_id:            alunoId,
                 data,
-                areas_trabalhadas:    areas.length ? areas : null,
-                humor_aluno:          humor,
-                engajamento:          engaj,
-                observacoes:          obs,
-                estrategias:          estrateg || null,
-                recomendacoes_familia: recom   || null,
-                encaminhamentos:      encam    || null
-            });
+                como_aprende_melhor: aprendeMelhor,
+                anexo_path:          path,
+                anexo_nome:          file.name
+            }).select('id').single();
             if (error) throw error;
 
-            await auditLog('CONSULTA_PSICO_ENCERRADA', 'consultas_psico', null, { alunoId });
+            await auditLog('CONSULTA_PSICO_ENCERRADA', 'consultas_psico', inserido?.id, { alunoId });
             showToast('Consulta registrada com sucesso', 'success');
             closeModal('modal-consulta-psico');
             await this._renderStats();
@@ -565,6 +520,13 @@ Modules.Psicopedagogia = {
             body.innerHTML = '<p class="text-danger">Consulta não encontrada.</p>';
             return;
         }
+
+        let anexoUrl = null;
+        if (c.anexo_path) {
+            const { data: signed } = await supabase.storage.from('consultas-psico').createSignedUrl(c.anexo_path, 300);
+            anexoUrl = signed?.signedUrl || null;
+        }
+        const anexoEhImagem = /\.(png|jpe?g|gif|webp)$/i.test(c.anexo_nome || '');
 
         const _HUMOR = { tranquilo:'Tranquilo', agitado:'Agitado', ansioso:'Ansioso', triste:'Triste', motivado:'Motivado' };
         const _ENGAJ = { alto:'Alto', medio:'Médio', baixo:'Baixo' };
@@ -599,8 +561,20 @@ Modules.Psicopedagogia = {
                         ).join('')}
                     </div>
                 </div>` : ''}
+            ${sec('🧠 Como esse aluno aprende melhor', c.como_aprende_melhor)}
+            ${c.anexo_path ? `
+                <div class="rel-section">
+                    <div class="rel-section-title">📎 Anexo da consulta</div>
+                    ${anexoUrl
+                        ? (anexoEhImagem
+                            ? `<img src="${escapeHtml(anexoUrl)}" alt="${escapeHtml(c.anexo_nome || 'anexo')}" class="mural-photo-img" style="max-width:220px;border-radius:10px;cursor:zoom-in" onclick="openLightbox('${escapeHtml(anexoUrl)}', '${escapeHtml((c.anexo_nome||'').replace(/'/g,"\\'")  )}')" />`
+                            : `<a href="${escapeHtml(anexoUrl)}" target="_blank" class="btn btn-ghost btn-sm">📎 ${escapeHtml(c.anexo_nome || 'Baixar anexo')}</a>`)
+                        : `<p class="text-muted small">Não foi possível gerar o link do anexo.</p>`
+                    }
+                </div>
+            ` : ''}
             ${sec('📝 Anotações da sessão',      c.observacoes)}
-            ${sec('🛠️ Estratégias utilizadas',   c.estrategias)}
+            ${sec('🛠️ Estratégias utilizadas nessa sessão', c.estrategias)}
             ${sec('🏠 Recomendações para família', c.recomendacoes_familia)}
             ${sec('📌 Encaminhamentos',           c.encaminhamentos)}
         `;
@@ -652,12 +626,14 @@ Modules.Psicopedagogia = {
         doc.text(nfc(c.psico?.nome || '—'), 110, 55);
 
         const tableBody = [
-            { item: nfc('Data'),         detalhe: nfc(c.data ? new Date(c.data+'T12:00:00').toLocaleDateString('pt-BR') : '—') },
-            { item: nfc('Humor'),        detalhe: nfc(_HUMOR[c.humor_aluno] || c.humor_aluno || '—') },
-            { item: nfc('Engajamento'),  detalhe: nfc(_ENGAJ[c.engajamento] || c.engajamento || '—') },
-            { item: nfc('Áreas'),        detalhe: nfc((c.areas_trabalhadas||[]).map(a => _AREAS[a]||a).join(', ') || '—') },
-            { item: nfc('Anotações'),    detalhe: nfc(c.observacoes || '—') },
+            { item: nfc('Data'), detalhe: nfc(c.data ? new Date(c.data+'T12:00:00').toLocaleDateString('pt-BR') : '—') },
         ];
+        if (c.como_aprende_melhor)   tableBody.push({ item: nfc('Como aprende melhor'), detalhe: nfc(c.como_aprende_melhor) });
+        if (c.anexo_nome)            tableBody.push({ item: nfc('Anexo'), detalhe: nfc(c.anexo_nome) + ' (baixe pela plataforma)' });
+        if (c.humor_aluno)           tableBody.push({ item: nfc('Humor'),        detalhe: nfc(_HUMOR[c.humor_aluno] || c.humor_aluno) });
+        if (c.engajamento)           tableBody.push({ item: nfc('Engajamento'),  detalhe: nfc(_ENGAJ[c.engajamento] || c.engajamento) });
+        if (c.areas_trabalhadas?.length) tableBody.push({ item: nfc('Áreas'),    detalhe: nfc(c.areas_trabalhadas.map(a => _AREAS[a]||a).join(', ')) });
+        if (c.observacoes)          tableBody.push({ item: nfc('Anotações'),    detalhe: nfc(c.observacoes) });
         if (c.estrategias)          tableBody.push({ item: nfc('Estratégias'),     detalhe: nfc(c.estrategias) });
         if (c.recomendacoes_familia) tableBody.push({ item: nfc('Recomendações'),  detalhe: nfc(c.recomendacoes_familia) });
         if (c.encaminhamentos)      tableBody.push({ item: nfc('Encaminhamentos'), detalhe: nfc(c.encaminhamentos) });

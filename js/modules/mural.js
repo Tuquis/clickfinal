@@ -1,10 +1,13 @@
 // ============================================================
 // MÓDULO: MURAL DO ALUNO (protótipo)
-// O próprio aluno anexa fotos em 4 seções. Só "ciclo de assuntos" é
-// visível pra psicopedagoga/professor — calendário de avaliações,
-// calendário de aulas e boletim são só admin + o próprio aluno (a
-// política de RLS no banco é quem garante isso de verdade). Os
-// arquivos ficam num bucket privado — sempre acessados por signed
+// O próprio aluno anexa fotos, divididas em dois grupos bem
+// separados na tela — pra não misturar o que é acompanhado pelo
+// professor/psicopedagoga com o que é só da administração:
+//   - Mural:   ciclo de assuntos (1ª a 4ª unidade) + calendários.
+//              Visível pra psicopedagoga/professor também.
+//   - Boletim: 1ª a 4ª unidade. Só admin + o próprio aluno (a
+//              política de RLS no banco é quem garante isso de verdade).
+// Os arquivos ficam num bucket privado — sempre acessados por signed
 // URL, nunca link público.
 // ============================================================
 
@@ -13,12 +16,38 @@ const MURAL_SIGNED_URL_TTL = 300; // segundos
 
 Modules.Mural = {
 
-    _tipos: [
-        { tipo: 'ciclo_assuntos',        titulo: 'Ciclo de assuntos',        ajuda: 'Fotos do que você está estudando — seus professores e a psicopedagoga acompanham por aqui.' },
-        { tipo: 'calendario_avaliacoes', titulo: 'Calendário de avaliações', ajuda: 'Foto do calendário de provas/avaliações — só a administração tem acesso a essa parte.' },
-        { tipo: 'calendario_aulas',      titulo: 'Calendário de aulas semanal', ajuda: 'Foto do seu calendário de aulas da semana — só a administração tem acesso a essa parte.' },
-        { tipo: 'boletim',               titulo: 'Boletim',                  ajuda: 'Fotos do seu boletim — só a administração tem acesso a essa parte.' },
+    _grupos: [
+        {
+            id: 'mural',
+            titulo: '📌 Mural',
+            subtitulo: 'Ciclo de assuntos e calendários — seus professores e a psicopedagoga acompanham o ciclo de assuntos por aqui.',
+            tipos: [
+                { tipo: 'ciclo_assuntos_1',      titulo: 'Ciclo de assuntos — 1ª Unidade' },
+                { tipo: 'ciclo_assuntos_2',      titulo: 'Ciclo de assuntos — 2ª Unidade' },
+                { tipo: 'ciclo_assuntos_3',      titulo: 'Ciclo de assuntos — 3ª Unidade' },
+                { tipo: 'ciclo_assuntos_4',      titulo: 'Ciclo de assuntos — 4ª Unidade' },
+                { tipo: 'calendario_avaliacoes', titulo: 'Calendário de avaliações' },
+                { tipo: 'calendario_aulas',      titulo: 'Calendário de aulas semanal' },
+            ],
+        },
+        {
+            id: 'boletim',
+            titulo: '🔒 Boletim',
+            subtitulo: 'Só a administração tem acesso a essa parte.',
+            restrito: true,
+            tipos: [
+                { tipo: 'boletim_1', titulo: '1ª Unidade' },
+                { tipo: 'boletim_2', titulo: '2ª Unidade' },
+                { tipo: 'boletim_3', titulo: '3ª Unidade' },
+                { tipo: 'boletim_4', titulo: '4ª Unidade' },
+            ],
+        },
     ],
+
+    // Lista achatada de todos os tipos — usada só pra carregar os feeds
+    get _tipos() {
+        return this._grupos.flatMap(g => g.tipos);
+    },
 
     async render() {
         if (!Auth.requireRole('aluno')) return;
@@ -27,22 +56,29 @@ Modules.Mural = {
             <div class="page-header">
                 <h1 class="page-title">Mural</h1>
             </div>
-            ${this._tipos.map(t => `
-                <div class="card mural-section-card">
-                    <div class="card-header">
-                        <h3>${t.titulo}</h3>
+            ${this._grupos.map(g => `
+                <div class="mural-grupo ${g.restrito ? 'mural-grupo-restrito' : ''}">
+                    <div class="mural-grupo-header">
+                        <h2 class="mural-grupo-titulo">${g.titulo}</h2>
+                        <p class="mural-grupo-subtitulo">${g.subtitulo}</p>
                     </div>
-                    <div class="card-body">
-                        <p class="text-muted small" style="margin-bottom:12px;">${t.ajuda}</p>
-                        <div class="mural-form">
-                            <input type="file" accept="image/*" class="input" id="mural-file-${t.tipo}" />
-                            <input type="text" class="input" id="mural-legenda-${t.tipo}" maxlength="500" placeholder="Legenda (opcional)" />
-                            <button class="btn btn-primary" id="btn-mural-postar-${t.tipo}" onclick="Modules.Mural.postar('${t.tipo}')">Postar foto</button>
+                    ${g.tipos.map(t => `
+                        <div class="card mural-section-card">
+                            <div class="card-header">
+                                <h3>${t.titulo}</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="mural-form">
+                                    <input type="file" accept="image/*" class="input" id="mural-file-${t.tipo}" />
+                                    <input type="text" class="input" id="mural-legenda-${t.tipo}" maxlength="500" placeholder="Legenda (opcional)" />
+                                    <button class="btn btn-primary" id="btn-mural-postar-${t.tipo}" onclick="Modules.Mural.postar('${t.tipo}')">Postar foto</button>
+                                </div>
+                                <div id="mural-feed-${t.tipo}" class="mural-feed">
+                                    <div class="loader-inline"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div id="mural-feed-${t.tipo}" class="mural-feed">
-                            <div class="loader-inline"></div>
-                        </div>
-                    </div>
+                    `).join('')}
                 </div>
             `).join('')}
         `);

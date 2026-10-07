@@ -42,7 +42,7 @@ Modules.Professores = {
         const uid = AppState.userProfile.id;
         const [{ data: rels }, { data: profInfo }] = await Promise.all([
             supabase.from('relatorios').select('created_at, sem_aluno').eq('professor_id', uid).order('created_at', { ascending: false }),
-            supabase.from('professores_info').select('saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', uid).single()
+            supabase.from('professores_info').select('saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref, valor_hora_aula').eq('usuario_id', uid).single()
         ]);
 
         this._relatorios = rels || [];
@@ -60,8 +60,10 @@ Modules.Professores = {
         const mesSemAluno = this._contagemMesSemAluno(now.getFullYear(), now.getMonth());
         const mesLabel    = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
-        // Aulas normais rendem R$20, sem aluno rendem R$14
-        const totalGanho = (total - totalSemAl) * 20 + totalSemAl * 14;
+        // Aulas normais rendem R$20 ou R$23 (configurável pelo admin em
+        // Financeiro), sem aluno sempre rende R$14
+        const valorHora = profInfo?.valor_hora_aula || 20;
+        const totalGanho = (total - totalSemAl) * valorHora + totalSemAl * 14;
 
         document.getElementById('prof-wrap').innerHTML = `
             <div class="stats-grid" style="margin-bottom:20px">
@@ -97,7 +99,7 @@ Modules.Professores = {
 
             <div class="card" style="margin-bottom:16px">
                 <div class="card-header" style="padding:10px 16px">
-                    <h3 style="font-size:.85rem">Ganhos ${now.getFullYear()}</h3>
+                    <h3 style="font-size:.85rem">Ganhos ${now.getFullYear()} <span class="text-muted" style="font-weight:400">· ${fmt.currency(valorHora)}/aula</span></h3>
                     <span class="prof-ganho-badge prof-ganho-total"><strong>${fmt.currency(totalGanho)}</strong></span>
                 </div>
                 <div class="card-body" style="padding:6px 12px;height:130px">
@@ -319,7 +321,7 @@ Modules.Professores = {
 
         const [{ data }, { data: pi }] = await Promise.all([
             supabase.from('relatorios').select('created_at, sem_aluno').eq('professor_id', profId).order('created_at', { ascending: false }),
-            supabase.from('professores_info').select('saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref').eq('usuario_id', profId).single()
+            supabase.from('professores_info').select('saldo_aulas_dadas, saldo_aulas_sem_aluno, ajuste_aulas_mes, ajuste_mes_ref, valor_hora_aula').eq('usuario_id', profId).single()
         ]);
 
         this._profId     = profId;
@@ -332,14 +334,15 @@ Modules.Professores = {
 
         const totalReal   = pi?.saldo_aulas_dadas     || 0;
         const totalSemAl  = pi?.saldo_aulas_sem_aluno || 0;
+        const valorHora   = pi?.valor_hora_aula       || 20;
 
         if (statsEl) {
             const mesCount = this._contagemMes(now.getFullYear(), now.getMonth()) + _ajusteMes(pi, now);
             const mesLabel = now.toLocaleDateString('pt-BR', { month: 'long' });
-            statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${totalReal} no total`;
+            statsEl.textContent = `${mesCount} aulas em ${mesLabel}  ·  ${totalReal} no total  ·  ${fmt.currency(valorHora)}/aula`;
         }
 
-        const totalGanho = (totalReal - totalSemAl) * 20 + totalSemAl * 14;
+        const totalGanho = (totalReal - totalSemAl) * valorHora + totalSemAl * 14;
         const ganhoEl = document.getElementById('prof-admin-ganho');
         if (ganhoEl) {
             ganhoEl.textContent = fmt.currency(totalGanho) + ' total';
@@ -353,7 +356,7 @@ Modules.Professores = {
         const chartTotal = document.getElementById('prof-chart-total');
         if (chartCard) {
             chartCard.style.display = 'block';
-            if (chartTotal) chartTotal.textContent = fmt.currency((totalReal - totalSemAl) * 20 + totalSemAl * 14) + ' total';
+            if (chartTotal) chartTotal.textContent = fmt.currency(totalGanho) + ' total';
             this._renderChart('prof-ganhos-chart-admin', now.getFullYear());
         }
     },
@@ -480,11 +483,12 @@ Modules.Professores = {
         const now = new Date();
         const mesAtual = year === now.getFullYear() ? now.getMonth() : 11;
 
-        // Conta ganho por mês (aulas normais R$20, sem aluno R$14)
+        // Conta ganho por mês (aulas normais R$20 ou R$23, sem aluno R$14)
+        const valorHora = this._profInfo?.valor_hora_aula || 20;
         const ganhoMes = Array(12).fill(0);
         this._relatorios.forEach(r => {
             const d = new Date(r.created_at);
-            if (d.getFullYear() === year) ganhoMes[d.getMonth()] += r.sem_aluno ? 14 : 20;
+            if (d.getFullYear() === year) ganhoMes[d.getMonth()] += r.sem_aluno ? 14 : valorHora;
         });
 
         // Acumula ganhos mês a mês (linha sobe continuamente)

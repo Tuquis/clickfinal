@@ -1152,7 +1152,8 @@ Modules.Financeiro = {
     },
 
     // ── Finanças dos professores: quanto pagar este mês ──────────
-    // Mesma regra usada em Modules.Professores: aula normal R$20, aula sem aluno R$14
+    // Aula normal rende R$20 ou R$23 (configurável por professor, ver
+    // professores_info.valor_hora_aula), aula sem aluno sempre R$14
     // (contagem = relatórios lançados no mês corrente).
     async loadFinancasProfessores() {
         const container = document.getElementById('financeiro-professores-list');
@@ -1161,8 +1162,9 @@ Modules.Financeiro = {
 
         const mesRef = this._mesReferenciaAtual();
         const inicioMesProfs = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-        const [{ data: profs, error }, { data: rels }, { data: pagamentos }] = await Promise.all([
+        const [{ data: profs, error }, { data: infos }, { data: rels }, { data: pagamentos }] = await Promise.all([
             supabase.from('usuarios').select('id, nome').eq('role', 'professor').eq('ativo', true).order('nome'),
+            supabase.from('professores_info').select('usuario_id, valor_hora_aula'),
             // Filtrado pro mês atual no servidor — sem isso, essa busca (que
             // calcula quanto pagar cada professor) esbarra no limite de ~1000
             // linhas por requisição do Supabase e pode SUBESTIMAR o valor a
@@ -1177,6 +1179,8 @@ Modules.Financeiro = {
         }
 
         const pagosEsteMes = new Set((pagamentos || []).filter(p => p.mes_referencia === mesRef).map(p => p.professor_id));
+        const valorHoraPorProf = {};
+        (infos || []).forEach(i => { valorHoraPorProf[i.usuario_id] = i.valor_hora_aula || 20; });
 
         const now = new Date();
         const cMes = {};
@@ -1192,8 +1196,9 @@ Modules.Financeiro = {
         const linhas = (profs || []).map(p => {
             const mes       = cMes[p.id] || 0;
             const semAluno  = cMesSemAluno[p.id] || 0;
-            const valor     = (mes - semAluno) * 20 + semAluno * 14;
-            return { id: p.id, nome: p.nome, mes, semAluno, valor, jaPago: pagosEsteMes.has(p.id) };
+            const valorHora = valorHoraPorProf[p.id] || 20;
+            const valor     = (mes - semAluno) * valorHora + semAluno * 14;
+            return { id: p.id, nome: p.nome, mes, semAluno, valorHora, valor, jaPago: pagosEsteMes.has(p.id) };
         }).sort((a, b) => b.valor - a.valor);
 
         const totalGeral = linhas.reduce((s, l) => s + l.valor, 0);
@@ -1208,7 +1213,7 @@ Modules.Financeiro = {
         container.innerHTML = `
             <table class="table table-cards">
                 <thead>
-                    <tr><th>Professor</th><th>Aulas no mês</th><th>Sem aluno</th><th>Valor a pagar</th><th>Status</th><th></th></tr>
+                    <tr><th>Professor</th><th>Aulas no mês</th><th>Sem aluno</th><th>Valor/hora</th><th>Valor a pagar</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody>
                     ${linhas.map(l => `
@@ -1216,6 +1221,12 @@ Modules.Financeiro = {
                             <td data-label="Professor"><strong>${escapeHtml(l.nome)}</strong></td>
                             <td data-label="Aulas no mês">${l.mes}</td>
                             <td data-label="Sem aluno">${l.semAluno > 0 ? l.semAluno : '—'}</td>
+                            <td data-label="Valor/hora">
+                                <select class="input" style="width:auto;min-width:90px" onchange="Modules.Financeiro.alterarValorHoraProfessor('${l.id}', this.value)" ${l.jaPago ? 'disabled title="Desmarque o pagamento deste mês para alterar"' : ''}>
+                                    <option value="20" ${l.valorHora === 20 ? 'selected' : ''}>R$20</option>
+                                    <option value="23" ${l.valorHora === 23 ? 'selected' : ''}>R$23</option>
+                                </select>
+                            </td>
                             <td data-label="Valor a pagar"><strong>${fmt.currency(l.valor)}</strong></td>
                             <td data-label="Status">${l.jaPago ? badge('✅ Pago', 'badge-success') : badge('⏳ Pendente', 'badge-warning')}</td>
                             <td data-label="Ações">
@@ -1235,14 +1246,33 @@ Modules.Financeiro = {
         `;
     },
 
+    // Troca R$20 ⇄ R$23 por hora-aula. loadFinancasProfessores() já
+    // recalcula o valor do mês inteiro a partir da contagem de relatórios
+    // toda vez que roda — então só precisamos salvar e recarregar a lista.
+    async alterarValorHoraProfessor(professorId, novoValorStr) {
+        const novoValor = parseFloat(novoValorStr);
+
+        const { error } = await supabase
+            .from('professores_info')
+            .update({ valor_hora_aula: novoValor })
+            .eq('usuario_id', professorId);
+
+        if (error) return showToast(error.message, 'error');
+
+        await auditLog('VALOR_HORA_PROFESSOR_ALTERADO', 'professores_info', professorId, { valor_hora_aula: novoValor });
+        showToast(`Professor agora conta ${fmt.currency(novoValor)} por hora-aula`, 'success');
+        await this.loadFinancasProfessores();
+    },
+
     // Recalcula na hora (não confia em número já renderizado) pra garantir
     // que o valor gravado no ledger bate com os relatórios mais recentes.
     async _calcularGanhoProfessorMes(professorId) {
-        const { data: rels } = await supabase
-            .from('relatorios')
-            .select('created_at, sem_aluno')
-            .eq('professor_id', professorId);
+        const [{ data: rels }, { data: info }] = await Promise.all([
+            supabase.from('relatorios').select('created_at, sem_aluno').eq('professor_id', professorId),
+            supabase.from('professores_info').select('valor_hora_aula').eq('usuario_id', professorId).single()
+        ]);
 
+        const valorHora = info?.valor_hora_aula || 20;
         const now = new Date();
         const doMes = (rels || []).filter(r => {
             const d = new Date(r.created_at);
@@ -1250,7 +1280,7 @@ Modules.Financeiro = {
         });
         const semAluno = doMes.filter(r => r.sem_aluno).length;
         const total = doMes.length;
-        const valor = (total - semAluno) * 20 + semAluno * 14;
+        const valor = (total - semAluno) * valorHora + semAluno * 14;
         return { total, semAluno, valor };
     },
 

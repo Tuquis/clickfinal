@@ -6,6 +6,7 @@ Modules.Atividades = {
     _page: 1,
 
     async render() {
+        if (!Auth.requireRole('admin', 'professor', 'aluno')) return;
         const isProf  = Auth.can('professor');
         const isAluno = Auth.can('aluno');
 
@@ -172,14 +173,16 @@ Modules.Atividades = {
         const from = (this._page - 1) * APP_CONFIG.paginationSize;
         query = query.range(from, from + APP_CONFIG.paginationSize - 1);
 
-        // Carregar respostas em paralelo
+        // Carregar respostas em paralelo — admin vê igual ao professor,
+        // pra poder abrir "Respostas" e conferir o que o aluno anexou
+        const podeVerRespostas = isProf || Auth.can('admin');
         let respostasPromise = Promise.resolve({ data: [] });
         if (isAluno) {
             respostasPromise = supabase
                 .from('respostas_atividades')
                 .select('atividade_id')
                 .eq('aluno_id', uid);
-        } else if (isProf) {
+        } else if (podeVerRespostas) {
             respostasPromise = supabase
                 .from('respostas_atividades')
                 .select(`atividade_id, id, arquivo_url, arquivo_nome, visualizado, created_at,
@@ -195,8 +198,8 @@ Modules.Atividades = {
 
         // Montar índices de respostas
         const respostasAluno = new Set((respostasData || []).map(r => r.atividade_id)); // aluno: set de atividades já respondidas
-        const respostasProf  = {};  // professor: { atividade_id: [respostas] }
-        if (isProf) {
+        const respostasProf  = {};  // professor/admin: { atividade_id: [respostas] }
+        if (podeVerRespostas) {
             (respostasData || []).forEach(r => {
                 if (!respostasProf[r.atividade_id]) respostasProf[r.atividade_id] = [];
                 respostasProf[r.atividade_id].push(r);
@@ -214,7 +217,7 @@ Modules.Atividades = {
             <div class="atividades-grid">
                 ${data.map(a => {
                     const jaRespondeu  = isAluno && respostasAluno.has(a.id);
-                    const respostas    = isProf ? (respostasProf[a.id] || []) : [];
+                    const respostas    = podeVerRespostas ? (respostasProf[a.id] || []) : [];
                     const naoLidas     = respostas.filter(r => !r.visualizado).length;
 
                     return `
@@ -254,7 +257,7 @@ Modules.Atividades = {
                                     </button>`
                                 : ''
                             }
-                            ${isProf
+                            ${podeVerRespostas
                                 ? `<button class="btn btn-ghost btn-sm" style="position:relative"
                                     onclick="Modules.Atividades.verRespostas('${a.id}','${escapeHtml(a.titulo).replace(/'/g,"\\'")}')">
                                     📋 Respostas${respostas.length > 0 ? ` (${respostas.length})` : ''}
@@ -507,8 +510,10 @@ Modules.Atividades = {
             </table>
         `;
 
-        // Marcar todas as respostas não lidas desta atividade como visualizadas
-        const naoLidas = respostas.filter(r => !r.visualizado).map(r => r.id);
+        // Marcar como visualizado só quando é o próprio professor que abriu —
+        // se o admin só está dando uma olhada, não queremos apagar o indicador
+        // de "novo" que o professor ainda não viu.
+        const naoLidas = Auth.can('professor') ? respostas.filter(r => !r.visualizado).map(r => r.id) : [];
         if (naoLidas.length) {
             await supabase
                 .from('respostas_atividades')

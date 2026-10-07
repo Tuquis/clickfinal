@@ -28,6 +28,7 @@ const Auth = {
         AppState.user = null;
         AppState.userProfile = null;
         AppState.role = null;
+        clearLastRoute();
         window.location.href = 'index.html';
     },
 

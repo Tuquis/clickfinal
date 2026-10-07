@@ -4445,7 +4445,6 @@ body.prof-sheet-open { overflow: hidden; }
     animation: profFadeUp .3s ease-out backwards;
     animation-delay: calc(var(--i, 0) * 70ms);
 }
-.perfil-card-mural { grid-column: 1 / -1; }
 .perfil-card-header {
     display: flex;
     align-items: center;
@@ -4463,7 +4462,29 @@ body.prof-sheet-open { overflow: hidden; }
 
 /* ── Mural (fotos: ciclo de assuntos + boletim) ── */
 
+/* Cada grupo (Mural / Boletim) fica visualmente separado — moldura
+   própria, cabeçalho grande — pra não virar uma lista infinita de
+   cards iguais sem nenhuma pista de onde uma seção acaba e a outra
+   começa. */
+.mural-grupo {
+    border: 1px solid var(--color-border);
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 24px;
+    background: rgba(124,58,237,.035);
+}
+.mural-grupo-header { margin-bottom: 16px; }
+.mural-grupo-titulo { font-size: 1.125rem; font-weight: 700; margin: 0; }
+.mural-grupo-subtitulo { font-size: .8125rem; color: var(--color-text-3); margin: 4px 0 0; }
+
+.mural-grupo-restrito {
+    background: rgba(220,38,38,.035);
+    border-color: rgba(220,38,38,.18);
+}
+.mural-grupo-restrito .mural-grupo-titulo { color: #b91c1c; }
+
 .mural-section-card { margin-bottom: 18px; }
+.mural-grupo .mural-section-card:last-child { margin-bottom: 0; }
 .mural-form {
     display: grid;
     grid-template-columns: 1fr 1fr auto;
