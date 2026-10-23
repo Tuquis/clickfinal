@@ -330,44 +330,52 @@ Modules.Dashboard = {
     },
 
     async _psico() {
-        const { data: totalAlunos } = await supabase
-            .from('usuarios')
-            .select('id', { count: 'exact', head: true })
-            .eq('role', 'aluno');
+        const uid = AppState.userProfile.id;
+        const now = new Date();
+        const iniMes = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const fimMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        const mesLabel = now.toLocaleDateString('pt-BR', { month: 'long' });
 
-        const { data: obsRecentes } = await supabase
-            .from('observacoes_psico')
-            .select('*, usuarios!observacoes_psico_aluno_id_fkey(nome)')
-            .eq('psico_id', AppState.userProfile.id)
-            .order('created_at', { ascending: false })
-            .limit(5);
+        // Contabiliza consultas pela quantidade de fichas enviadas de verdade
+        // (consultas_psico — uma linha por "Encerrar Consulta"), não por um
+        // array truncado em 5 como estava antes.
+        const [{ count: totalAlunos }, { count: cMes }, { count: cTotal }, { data: fichasRecentes }] = await Promise.all([
+            supabase.from('usuarios').select('id', { count: 'exact', head: true }).eq('role', 'aluno').eq('ativo', true),
+            supabase.from('consultas_psico').select('id', { count: 'exact', head: true }).eq('psico_id', uid).gte('data', iniMes).lte('data', fimMes),
+            supabase.from('consultas_psico').select('id', { count: 'exact', head: true }).eq('psico_id', uid),
+            supabase.from('consultas_psico')
+                .select('id, data, como_aprende_melhor, aluno:usuarios!consultas_psico_aluno_id_fkey(nome)')
+                .eq('psico_id', uid)
+                .order('created_at', { ascending: false })
+                .limit(5)
+        ]);
 
         renderContent(`
             <div class="page-header">
                 <h1 class="page-title">Painel Psicopedagógico</h1>
             </div>
-            <div class="stats-grid stats-grid-2">
-                ${Modules.Dashboard._statCard('Total de Alunos', totalAlunos?.length || 0, '🎓', 'stat-blue')}
-                ${Modules.Dashboard._statCard('Suas Observações', obsRecentes?.length || 0, '🧠', 'stat-purple')}
+            <div class="stats-grid stats-grid-3">
+                ${Modules.Dashboard._statCard('Total de Alunos', totalAlunos || 0, '🎓', 'stat-blue')}
+                ${Modules.Dashboard._statCard(`Consultas em ${mesLabel}`, cMes || 0, '📋', 'stat-purple')}
+                ${Modules.Dashboard._statCard('Total de Consultas', cTotal || 0, '🧠', 'stat-teal')}
             </div>
             <div class="card">
                 <div class="card-header">
-                    <h3>Observações Recentes</h3>
+                    <h3>Fichas Recentes</h3>
                     <button class="btn btn-ghost btn-sm" onclick="Router.navigate('psicopedagogia')">Ver todas</button>
                 </div>
                 <div class="card-body">
-                    ${obsRecentes?.length
-                        ? obsRecentes.map(o => `
+                    ${fichasRecentes?.length
+                        ? fichasRecentes.map(c => `
                             <div class="obs-item">
                                 <div class="obs-header">
-                                    <span class="obs-aluno">${escapeHtml(o.usuarios?.nome || '')}</span>
-                                    <span class="obs-date">${fmt.date(o.data)}</span>
-                                    ${badge(CATEGORIAS_PSICO[o.categoria] || o.categoria, 'badge-secondary')}
+                                    <span class="obs-aluno">${escapeHtml(c.aluno?.nome || '—')}</span>
+                                    <span class="obs-date">${fmt.date(c.data)}</span>
                                 </div>
-                                <div class="obs-conteudo">${escapeHtml(o.conteudo.substring(0, 120))}${o.conteudo.length > 120 ? '...' : ''}</div>
+                                ${c.como_aprende_melhor ? `<div class="obs-conteudo">${escapeHtml(c.como_aprende_melhor.substring(0, 120))}${c.como_aprende_melhor.length > 120 ? '...' : ''}</div>` : ''}
                             </div>
                         `).join('')
-                        : emptyState('Nenhuma observação registrada')
+                        : emptyState('Nenhuma ficha de consulta registrada ainda')
                     }
                 </div>
             </div>

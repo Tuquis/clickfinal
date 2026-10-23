@@ -1,5 +1,5 @@
 // ============================================================
-// MÓDULO: CHAT DIRETO — mensagens entre professor e aluno
+// MÓDULO: CHAT DIRETO — mensagens entre aluno e professor/psicopedagoga
 // Interface estilo WhatsApp: lista de contatos + conversa
 // ============================================================
 
@@ -17,7 +17,7 @@ Modules.Chat = {
     async initGlobal(uid, role) {
         this._uid  = uid;
         this._role = role;
-        if (role !== 'professor' && role !== 'aluno') return;
+        if (role !== 'professor' && role !== 'aluno' && role !== 'psicopedagoga') return;
 
         // Badge inicial
         await this._refreshBadge();
@@ -132,12 +132,13 @@ Modules.Chat = {
 
         const listEl = document.getElementById('chat-contacts-list');
 
-        // Carrega contatos pela role oposta
+        // Carrega contatos pela role oposta:
+        // professor/psicopedagoga -> alunos | aluno -> professores + psicopedagoga
         let users = null;
         let usersErr = null;
 
-        if (role === 'professor') {
-            // Professor pode ver alunos direto (RLS permite)
+        if (role === 'professor' || role === 'psicopedagoga') {
+            // Professor/psicopedagoga podem ver alunos direto (RLS permite)
             const res = await supabase
                 .from('usuarios')
                 .select('id, nome')
@@ -147,7 +148,7 @@ Modules.Chat = {
             users    = res.data;
             usersErr = res.error;
         } else {
-            // Aluno: tenta RPC (SECURITY DEFINER) primeiro
+            // Aluno: tenta RPC (SECURITY DEFINER) primeiro — retorna professores + psicopedagoga
             const rpc = await supabase.rpc('get_contatos_chat', { p_role: 'aluno' });
             if (!rpc.error) {
                 users = rpc.data;
@@ -156,13 +157,13 @@ Modules.Chat = {
                 // e lê os seus próprios dados de um a um com .in() — RLS libera
                 // por auth.uid(), mas só quando o row.id está na lista autorizada;
                 // como isso ainda falha, usamos mensagens_diretas já existentes como pivot.
-                // Última opção: usa .or() para pegar role='professor' + id próprio.
-                // Supabase aplica RLS *antes* do OR, então qualquer linha de professor
-                // com a policy corrigida já aparece; se ainda não rodou o SQL, retorna vazio.
+                // Última opção: usa .or() para pegar role='professor'/'psicopedagoga' + id próprio.
+                // Supabase aplica RLS *antes* do OR, então qualquer linha com a policy
+                // corrigida já aparece; se ainda não rodou o SQL, retorna vazio.
                 const res2 = await supabase
                     .from('usuarios')
                     .select('id, nome')
-                    .eq('role', 'professor')
+                    .in('role', ['professor', 'psicopedagoga'])
                     .eq('ativo', true)
                     .order('nome');
                 users    = res2.data;

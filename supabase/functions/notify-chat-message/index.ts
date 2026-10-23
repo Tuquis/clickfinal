@@ -2,9 +2,19 @@
 // ============================================================
 // EDGE FUNCTION: notify-chat-message
 // Disparada via Database Webhook (INSERT em mensagens_diretas).
-// Envia WhatsApp ao professor quando um aluno manda mensagem.
-// Só dispara na PRIMEIRA mensagem não lida (evita spam).
+// Envia WhatsApp pro destinatário de qualquer mensagem de chat — aluno,
+// professor ou psicopedagoga — sempre que o telefone certo estiver
+// cadastrado. Só dispara na PRIMEIRA mensagem não lida (evita spam).
 // ============================================================
+
+// Cada role tem sua tabela de info e sua coluna de telefone própria.
+// Pro aluno é importante usar telefone_aluno (o WhatsApp dele mesmo),
+// não `telefone` — essa é a do responsável, usada só pro relatório.
+const TELEFONE_POR_ROLE: Record<string, { tabela: string; coluna: string }> = {
+  professor:     { tabela: 'professores_info', coluna: 'telefone' },
+  psicopedagoga: { tabela: 'psico_info',       coluna: 'telefone' },
+  aluno:         { tabela: 'alunos_info',      coluna: 'telefone_aluno' },
+}
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { enviarTemplate, normalizarTelefone } from '../_shared/meta.ts'
@@ -35,16 +45,15 @@ Deno.serve(async (req) => {
       .eq('id', destinatario_id)
       .single()
 
-    // Só notifica se o destinatário for professor
-    if (!destinatario || destinatario.role !== 'professor') {
-      return new Response(JSON.stringify({ skipped: 'destinatário não é professor' }), { status: 200 })
+    const config = destinatario && TELEFONE_POR_ROLE[destinatario.role]
+    if (!config) {
+      return new Response(JSON.stringify({ skipped: 'destinatário sem papel notificável' }), { status: 200 })
     }
 
     // ── Anti-spam: janela de 30 minutos ─────────────────────
-    // Não envia se já foi enviada uma notificação nos últimos 30 min
-    // (ou seja, se existe outra mensagem não lida recente deste aluno).
-    // Isso evita spam mas garante que após 30 min sem leitura o prof
-    // recebe novo aviso caso o aluno mande outra mensagem.
+    // Não envia se já existe outra mensagem não lida recente desse mesmo
+    // remetente pra esse mesmo destinatário. Isso evita spam mas garante
+    // que após 30 min sem leitura um novo aviso é disparado.
     const trintaMinAtras = new Date(Date.now() - 30 * 60 * 1000).toISOString()
     const { count: mensagensRecentes } = await db
       .from('mensagens_diretas')
@@ -59,33 +68,34 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: 'notificação já enviada nos últimos 30 min' }), { status: 200 })
     }
 
-    // ── Busca telefone do professor ──────────────────────────
-    const { data: profInfo } = await db
-      .from('professores_info')
-      .select('telefone')
+    // ── Busca telefone do destinatário (tabela/coluna dependem do papel) ──
+    const { data: destInfo } = await db
+      .from(config.tabela)
+      .select(config.coluna)
       .eq('usuario_id', destinatario_id)
       .single()
 
-    if (!profInfo?.telefone) {
-      console.log(`Professor ${destinatario.nome} sem telefone cadastrado — pulando`)
-      return new Response(JSON.stringify({ skipped: 'professor sem telefone' }), { status: 200 })
+    const telefone = destInfo?.[config.coluna]
+    if (!telefone) {
+      console.log(`${destinatario.nome} (${destinatario.role}) sem telefone cadastrado — pulando`)
+      return new Response(JSON.stringify({ skipped: 'destinatário sem telefone' }), { status: 200 })
     }
 
-    // ── Busca nome do aluno remetente ────────────────────────
+    // ── Busca nome de quem mandou a mensagem ─────────────────
     const { data: remetente } = await db
       .from('usuarios')
       .select('nome')
       .eq('id', remetente_id)
       .single()
 
-    const nomeAluno = remetente?.nome ?? 'Um aluno'
+    const nomeRemetente = remetente?.nome ?? 'Alguém'
 
     // ── Envia o template ──────────────────────────────────────
-    await enviarTemplate(profInfo.telefone, 'nova_mensagem_chat', [nomeAluno])
+    await enviarTemplate(telefone, 'nova_mensagem_chat', [nomeRemetente])
 
-    console.log(`Notificação de chat enviada para professor ${destinatario.nome} (${normalizarTelefone(profInfo.telefone)})`)
+    console.log(`Notificação de chat enviada para ${destinatario.role} ${destinatario.nome} (${normalizarTelefone(telefone)})`)
     return new Response(
-      JSON.stringify({ success: true, professor: destinatario.nome }),
+      JSON.stringify({ success: true, destinatario: destinatario.nome, role: destinatario.role }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
 

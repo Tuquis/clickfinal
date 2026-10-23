@@ -93,6 +93,29 @@ Modules.Financeiro = {
                 </div>
             </div>
 
+            <!-- MODAL FATURAMENTO EM PDF -->
+            <div class="modal-overlay" id="modal-faturamento-pdf">
+                <div class="modal-box modal-sm">
+                    <div class="modal-header">
+                        <h3>Faturamento em PDF</h3>
+                        <button class="modal-close" onclick="closeModal('modal-faturamento-pdf')">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small" style="margin-bottom:12px">
+                            Gera um PDF só com o faturamento (pagamentos de alunos) do mês escolhido — sem despesas, sem pagamento de professores.
+                        </p>
+                        <div class="form-group">
+                            <label class="form-label">Mês de referência *</label>
+                            <input type="month" class="input" id="fat-mes" value="${new Date().toISOString().slice(0, 7)}" />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick="closeModal('modal-faturamento-pdf')">Cancelar</button>
+                        <button class="btn btn-primary" id="btn-gerar-faturamento" onclick="Modules.Financeiro.gerarFaturamentoPDF()">Gerar PDF</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="fin-tab-alunos" class="fin-tab-content" style="display:none">
                 <div class="card">
                     <div class="card-header"><h3>Alunos — Pacote, Vencimento e Pagamento</h3></div>
@@ -284,7 +307,8 @@ Modules.Financeiro = {
     // Todas as seções já são carregadas no render() — trocar de aba só
     // mostra/esconde, sem refazer nenhuma consulta.
     _finTabActions: {
-        geral:       '<button class="btn btn-secondary" onclick="Modules.Financeiro.exportarCSV()">📄 Exportar CSV</button>',
+        geral:       `<button class="btn btn-secondary" onclick="Modules.Financeiro.exportarCSV()">📄 Exportar CSV</button>
+                      <button class="btn btn-secondary" onclick="Modules.Financeiro.abrirFaturamentoPDF()">🧾 Faturamento (PDF)</button>`,
         alunos:      '',
         despesas:    '<button class="btn btn-primary" onclick="Modules.Financeiro.openCreateDespesa()">+ Nova Despesa</button>',
         pacotes:     '<button class="btn btn-primary" onclick="Modules.Financeiro.openCreate()">+ Novo Pacote</button>',
@@ -628,6 +652,121 @@ Modules.Financeiro = {
         a.click();
         URL.revokeObjectURL(url);
         showToast('CSV exportado', 'success');
+    },
+
+    abrirFaturamentoPDF() {
+        const input = document.getElementById('fat-mes');
+        if (input) input.value = new Date().toISOString().slice(0, 7);
+        openModal('modal-faturamento-pdf');
+    },
+
+    // PDF só do faturamento (pagamentos_alunos) do mês escolhido — nada de
+    // despesa ou pagamento de professor aqui, só a entrada de dinheiro.
+    async gerarFaturamentoPDF() {
+        if (!window.jspdf?.jsPDF) return showToast('Biblioteca PDF não carregada', 'error');
+
+        const mesInput = document.getElementById('fat-mes')?.value; // 'YYYY-MM'
+        if (!mesInput) return showToast('Selecione o mês', 'error');
+        const mesRef = `${mesInput}-01`;
+
+        const btn = document.getElementById('btn-gerar-faturamento');
+        if (btn) btn.disabled = true;
+        try {
+            const { data: pagamentos, error } = await supabase
+                .from('pagamentos_alunos')
+                .select('*, aluno:usuarios!pagamentos_alunos_aluno_id_fkey(nome)')
+                .eq('mes_referencia', mesRef)
+                .order('valor', { ascending: false });
+
+            if (error) throw error;
+
+            if (!pagamentos?.length) {
+                showToast('Nenhum faturamento registrado nesse mês', 'warning');
+                return;
+            }
+
+            const nfc = s => s ? String(s).normalize('NFC') : '';
+            const mesLabel = this._formatMesLongo(mesRef);
+            const total = pagamentos.reduce((s, p) => s + p.valor, 0);
+            const totalPix = pagamentos.filter(p => p.forma_pagamento === 'pix').reduce((s, p) => s + p.valor, 0);
+            const totalCartao = pagamentos.filter(p => p.forma_pagamento === 'cartao').reduce((s, p) => s + p.valor, 0);
+
+            const doc = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+            // Header
+            doc.setFillColor(124, 58, 237);
+            doc.rect(0, 0, 210, 35, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+            doc.text(nfc('CLICK DO SABER'), 105, 14, { align: 'center' });
+            doc.setFontSize(11); doc.setFont('helvetica', 'normal');
+            doc.text(nfc('Relatório de Faturamento — ' + mesLabel), 105, 23, { align: 'center' });
+            doc.setFontSize(9);
+            doc.text(nfc('Gerado em ' + new Date().toLocaleDateString('pt-BR')), 105, 30, { align: 'center' });
+
+            // Resumo
+            doc.setFillColor(245, 245, 245); doc.setDrawColor(220);
+            doc.roundedRect(10, 40, 190, 24, 3, 3, 'FD');
+            doc.setTextColor(80, 80, 80); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+            doc.text(nfc('Faturamento total'), 16, 49);
+            doc.text(nfc('Alunos pagantes'), 90, 49);
+            doc.text(nfc('Pix / Cartão'), 148, 49);
+            doc.setTextColor(30, 30, 30); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+            doc.text(nfc(fmt.currency(total)), 16, 58);
+            doc.setFontSize(12);
+            doc.text(nfc(String(pagamentos.length)), 90, 58);
+            doc.setFontSize(10);
+            doc.text(nfc(`${fmt.currency(totalPix)} / ${fmt.currency(totalCartao)}`), 148, 58);
+
+            const body = pagamentos.map(p => ({
+                aluno: nfc(p.aluno?.nome || '—'),
+                forma: p.forma_pagamento === 'cartao' ? 'Cartão' : 'Pix',
+                valor: nfc(fmt.currency(p.valor)),
+                repasse: p.forma_pagamento === 'cartao'
+                    ? (this._pagamentoJaRepassado(p) ? 'Já repassado' : `Previsto ${fmt.date(p.data_repasse)}`)
+                    : '—'
+            }));
+
+            doc.autoTable({
+                startY: 70,
+                theme: 'grid',
+                headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
+                styles: { fontSize: 10, cellPadding: 4 },
+                columns: [
+                    { header: 'Aluno', dataKey: 'aluno' },
+                    { header: 'Forma', dataKey: 'forma' },
+                    { header: 'Valor', dataKey: 'valor' },
+                    { header: 'Repasse', dataKey: 'repasse' }
+                ],
+                body,
+                foot: [[
+                    { content: nfc('Total'), styles: { fontStyle: 'bold' } },
+                    '',
+                    { content: nfc(fmt.currency(total)), styles: { fontStyle: 'bold' } },
+                    ''
+                ]],
+                footStyles: { fillColor: [245, 245, 245], textColor: [30, 30, 30] }
+            });
+
+            const pageH = doc.internal.pageSize.height;
+            doc.setDrawColor(200); doc.line(10, pageH - 20, 200, pageH - 20);
+            doc.setFontSize(9); doc.setTextColor(120);
+            doc.text(nfc('Click do Saber - Plataforma de Acompanhamento Pedagógico'), 105, pageH - 12, { align: 'center' });
+
+            doc.save(`faturamento-${mesRef}.pdf`);
+            closeModal('modal-faturamento-pdf');
+            showToast('PDF de faturamento exportado', 'success');
+        } catch (err) {
+            showToast(err.message || 'Erro ao gerar PDF', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    },
+
+    _formatMesLongo(dataStr) {
+        const [ano, mes] = dataStr.split('-');
+        const nomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        return `${nomes[parseInt(mes, 10) - 1]} de ${ano}`;
     },
 
     _payToggleHtml(alunoId, forma) {

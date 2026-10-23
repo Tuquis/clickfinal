@@ -865,6 +865,13 @@ Modules.Relatorios = {
     _updateBtnEnviarResponsavel() {
         var btn = document.getElementById('btn-enviar-responsavel');
         if (!btn) return;
+        // Enviar relatório pro responsável é ação de gestão — professor não
+        // deve ter esse botão disponível, só vê o próprio relatório.
+        if (Auth.can('professor')) {
+            btn.style.display = 'none';
+            return;
+        }
+        btn.style.display = '';
         if (!this._viewingTelefoneResp) {
             btn.textContent = '📤 Enviar para Responsável';
             btn.disabled = true;
@@ -1133,6 +1140,7 @@ Modules.Relatorios = {
 
     // ── Enviar/reenviar o PDF do relatório para o responsável ────
     async enviarParaResponsavel() {
+        if (Auth.can('professor')) return showToast('Ação não disponível para professores', 'error');
         var id = this._viewingId;
         if (!id) return showToast('Abra o relatório primeiro', 'error');
         if (!this._viewingTelefoneResp) return showToast('Responsável sem telefone cadastrado', 'error');

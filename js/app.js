@@ -97,6 +97,7 @@ const SIDEBAR_ITEMS = {
         { id: 'agenda',         icon: '📅', label: 'Agenda' },
         { id: 'relatorios',     icon: '📄', label: 'Relatórios' },
         { id: 'psicopedagogia', icon: '🧠', label: 'Iniciar Consulta' },
+        { id: 'chat',           icon: '💬', label: 'Chat', badge: true },
     ],
     mentor: [
         { id: 'dashboard',        icon: '⊞', label: 'Dashboard' },
@@ -365,7 +366,7 @@ async function initApp() {
         // Inicia badge de mensagens não lidas (persiste em todas as páginas)
         const uid  = AppState.userProfile?.id;
         const role = AppState.role;
-        if (uid && (role === 'professor' || role === 'aluno')) {
+        if (uid && (role === 'professor' || role === 'aluno' || role === 'psicopedagoga')) {
             Modules.Chat.initGlobal(uid, role);
         }
 

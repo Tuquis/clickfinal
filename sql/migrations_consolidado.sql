@@ -653,7 +653,7 @@ CREATE POLICY "usuarios_select" ON public.usuarios FOR SELECT
         public.get_user_role() = 'admin'
         OR id = public.get_user_id()
         OR public.get_user_role() IN ('professor','psicopedagoga','mentor')
-        OR (public.get_user_role() = 'aluno' AND role = 'professor')
+        OR (public.get_user_role() = 'aluno' AND role IN ('professor','psicopedagoga'))
     );
 CREATE POLICY "usuarios_insert" ON public.usuarios FOR INSERT
     WITH CHECK (public.get_user_role() = 'admin');
@@ -1257,8 +1257,9 @@ GRANT EXECUTE ON FUNCTION public.incrementar_aulas_disponiveis(UUID, INTEGER) TO
 COMMENT ON FUNCTION public.incrementar_aulas_disponiveis(UUID, INTEGER) IS
 'Incremento atômico (UPDATE SET x = x + delta em uma única instrução) de alunos_info.aulas_disponiveis — usar sempre que for ADICIONAR crédito pelo admin, em vez de ler o valor no client e gravar de volta somado (isso tem race condition com o trigger de relatório, que debita concorrentemente). Criado em set/2026.';
 
--- Contatos do chat: professor → alunos ativos | aluno → professores ativos
--- SECURITY DEFINER bypassa RLS, permitindo que alunos vejam professores
+-- Contatos do chat: professor/psicopedagoga → alunos ativos
+--                    aluno → professores + psicopedagoga ativos
+-- SECURITY DEFINER bypassa RLS, permitindo que alunos vejam professores/psico
 DROP FUNCTION IF EXISTS public.get_contatos_chat(TEXT);
 CREATE OR REPLACE FUNCTION public.get_contatos_chat(p_role TEXT)
 RETURNS TABLE(id UUID, nome TEXT)
@@ -1268,8 +1269,11 @@ SET search_path = public
 AS $$
     SELECT u.id, u.nome
     FROM public.usuarios u
-    WHERE u.role = CASE WHEN p_role = 'professor' THEN 'aluno' ELSE 'professor' END
-      AND u.ativo = true
+    WHERE u.ativo = true
+      AND (
+            (p_role IN ('professor','psicopedagoga') AND u.role = 'aluno')
+            OR (p_role = 'aluno' AND u.role IN ('professor','psicopedagoga'))
+          )
     ORDER BY u.nome;
 $$;
 GRANT EXECUTE ON FUNCTION public.get_contatos_chat(TEXT) TO authenticated;
